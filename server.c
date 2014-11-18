@@ -1,6 +1,5 @@
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <sys/epoll.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -12,6 +11,10 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <pthread.h>
+
+#ifdef HAVE_SYS_EPOLL_H
+#include <sys/epoll.h>
+#endif
 
 #define MAXEVENTS 1000
 
@@ -138,11 +141,68 @@ struct params params[THREADS];
 pthread_t threads[THREADS];
 pthread_t flush_thread;
 
-void
+#ifdef HAVE_SYS_EPOLL_H
+
+static int
+equeue_create()
+{
+	int efd = epoll_create(1000);
+	
+	if (efd == -1){
+		perror("epoll_create");
+		abort();
+	}
+
+	return efd;
+}
+
+static void
+equeue_add(int epoll_fd, int accepted_fd)
+{
+	struct epoll_event event;
+	
+	event.data.fd = accepted_fd;
+	event.events = EPOLLIN | EPOLLET;
+	s = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, accepted_fd, &event);
+	if (s == -1)
+	{
+		perror("epoll_ctl");
+		abort();
+	}
+}
+
+#elif HAVE_SYS_EVENT_H
+
+static int
+equeue_create()
+{
+}
+
+static void
+equeue_add(int epoll_fd, int accepted_fd)
+{
+	struct epoll_event event;
+	
+	event.data.fd = accepted_fd;
+	event.events = EPOLLIN | EPOLLET;
+	s = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, accepted_fd, &event);
+	if (s == -1)
+	{
+		perror("epoll_ctl");
+		abort();
+	}
+}
+
+#else
+
+#pragma error("system doesn't have neither epoll or kevent system calls")
+
+#endif
+#pragma error("test")
+static void
 accept_connection(int sfd, int efd, int num)
 {
 	int s;
-	struct epoll_event event;
 
 	/* We have a notification on the listening socket, which
 	   means one or more incoming connections. */
@@ -171,8 +231,6 @@ accept_connection(int sfd, int efd, int num)
 			}
 		}
 
-		s = getnameinfo(&in_addr, in_len,
-				hbuf, sizeof hbuf,
 				sbuf, sizeof sbuf,
 				NI_NUMERICHOST | NI_NUMERICSERV);
 		if (s == 0)
@@ -187,14 +245,7 @@ accept_connection(int sfd, int efd, int num)
 		if (s == -1)
 			abort();
 
-		event.data.fd = infd;
-		event.events = EPOLLIN | EPOLLET;
-		s = epoll_ctl(efd, EPOLL_CTL_ADD, infd, &event);
-		if (s == -1)
-		{
-			perror("epoll_ctl");
-			abort();
-		}
+		equeue_add(efd, infd);
 	}
 }
 
