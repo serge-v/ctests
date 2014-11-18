@@ -11,9 +11,7 @@ AC_CONFIG_HEADERS([config.h])
 AC_PROG_CC
 
 # Checks for libraries.
-# FIXME: Replace `main' with a function in `-lodbc':
 AC_CHECK_LIB([odbc], [main])
-# FIXME: Replace `main' with a function in `-lrt':
 
 # Checks for header files.
 AC_HEADER_RESOLV

@@ -21,3 +21,18 @@
 *.i*86
 *.x86_64
 *.hex
+
+ctests.xcodeproj/
+
+# autoconf files
+
+Makefile
+Makefile.in
+aclocal.m4
+autom4te.cache/
+compile
+config.h.in
+configure
+depcomp
+install-sh
+missing

@@ -2,8 +2,7 @@
 #include <stdlib.h>
 #include <memory.h>
 
-struct array
-{
+struct array {
 	int    n;     // number of elements
 	int    lo;    // min allowed element value
 	int    hi;    // max allowed element value
@@ -32,6 +31,7 @@ array_print(struct array *a)
 	for (int i = 0; i < a->n; i++) {
 		printf(" %d ", i);
 	}
+
 	printf("\n");
 
 	for (int i = 0; i < a->n; i++) {
