@@ -36,3 +36,12 @@ configure
 depcomp
 install-sh
 missing
+config.log
+config.status
+config.h
+stamp-h1
+.deps/
+
+tags
+*~.*
+
