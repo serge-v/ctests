@@ -74,7 +74,7 @@ get_url(const char* url, struct response* resp)
 
 static void
 test_fetch(const char *url)
-{	
+{
 	struct response resp;
 	memset(&resp, 0, sizeof(struct response));
 
@@ -92,7 +92,7 @@ main()
 	if (vstr != NULL) {
 		verbose = (strcmp("1", vstr) == 0);
 	}
-	
+
 	curl_global_init(CURL_GLOBAL_ALL);
 
 	test_fetch("http://localhost:8000/curltest.c");
@@ -102,7 +102,7 @@ main()
 	test_fetch("badprot://badaddress/badaddress.txt");
 
 	curl_global_cleanup();
-	
+
 	return 0;
 }
 
