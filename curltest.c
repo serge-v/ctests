@@ -69,7 +69,7 @@ get_url(const char* url, struct response* resp)
  	CURLcode err = curl_easy_perform(curl);
 	resp->error = err;
 	curl_easy_cleanup(curl);
-	return err;
+	return err;	
 }
 
 static void

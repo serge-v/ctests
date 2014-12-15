@@ -8,9 +8,12 @@
 #include <sys/stat.h>
 #include <sys/queue.h>
 #include <sysexits.h>
+#include <time.h>
 #include <curl/curl.h>
+#include <unistd.h>
+#include "fetch.h"
 
-static int trace = 1;
+static int trace = 0;
 
 static void
 print_rex_error(int errcode, const regex_t *preg)
@@ -125,18 +128,20 @@ struct departure
 };
 
 #define CEND    "\x1b[0m "
+#define BLACK   "\x1b[30m"
 #define RED     "\x1b[31m"
 #define YELLOW  "\x1b[33m"
 #define GREEN   "\x1b[32m"
 
-#define COL_TRAIN	RED "[%s]" CEND
-#define COL_DEST	YELLOW "[%s]" CEND
-#define COL_PLATFORM	GREEN "[%s]" CEND
+#define COL_TIME        BLACK  "[%7s]"   CEND
+#define COL_TRAIN       RED    "[%5s]"   CEND
+#define COL_DEST        YELLOW "[%-20s]" CEND
+#define COL_TRACK       GREEN  "[%3s]"   CEND
 
 static void
 departure_dump(struct departure *d)
 {
-	printf("[%s] " COL_TRAIN COL_DEST COL_PLATFORM "%s\n",
+	printf(COL_TIME COL_TRAIN COL_DEST COL_TRACK "%s\n",
 		d->time, d->train, d->destination,
 		d->platform, d->status);
 }
@@ -197,7 +202,7 @@ trscanner_next(struct trscanner *s)
 SLIST_HEAD(departures, departure);
 
 static void
-parse_tr(char *text, int start, int end, struct departures *list)
+parse_tr(char *text, int start, int end, struct departures *list, struct departure **last_added)
 {
 	struct trscanner scan;
 	struct departure *dep;
@@ -243,7 +248,12 @@ parse_tr(char *text, int start, int end, struct departures *list)
 	if (trace)
 		departure_dump(dep);
 
-	SLIST_INSERT_HEAD(list, dep, entries);
+	if (*last_added == NULL)
+		SLIST_INSERT_HEAD(list, dep, entries);
+	else
+		SLIST_INSERT_AFTER(*last_added, dep, entries);
+
+	*last_added = dep;
 }
 
 
@@ -254,11 +264,12 @@ parse_njt_departures(const char *fname)
 	regex_t preg;
 	char *text;
 	size_t len;
+	struct departure *last_added = NULL;
 
 	struct departures *dlist = calloc(1, sizeof(struct departures));
 	SLIST_INIT(dlist);
 
-	rc = read_text("1~.html", &text, &len);
+	rc = read_text(fname, &text, &len);
 	if (rc != 0)
 		err(rc, "cannot read file");
 
@@ -284,7 +295,7 @@ parse_njt_departures(const char *fname)
 		if (matches[0].rm_so == -1)
 			break;
 
-		parse_tr(text, matches[1].rm_so, matches[1].rm_eo, dlist);
+		parse_tr(text, matches[1].rm_so, matches[1].rm_eo, dlist, &last_added);
 
 		matches[0].rm_so = matches[0].rm_eo;
 		matches[0].rm_eo = len;
@@ -304,37 +315,67 @@ expired(const char *fname)
 	if (rc != 0)
 		return 1;
 
-	if (st.st_mtime + 60 < time())
+	if (st.st_mtime + 60 < time(NULL))
 		return 1;
 
 	return 0;
 }
 
-static int
-fetch_departure_vision(const char *fname)
+static const char *njt_departure_vision = "http://dv.njtransit.com/mobile/tid-mobile.aspx?SID=%s";
+
+static struct departures*
+fetch_departures(const char *station_code)
 {
-	
+	char fname[PATH_MAX];
+	char url[100];
+
+	snprintf(fname, PATH_MAX, "/tmp/njtransit-%s.html", station_code);
+	snprintf(url, 100, njt_departure_vision, station_code);
+
+	if (expired(fname))
+		fetch(url, fname);
+
+	struct departures* deps = parse_njt_departures(fname);
+	return deps;
 }
 
 static void
-fetch_departures(const char *station_code)
+show_departures()
 {
-	char fname[MAX_PATH];
+	char* route[] = { "HR", "TX", "XG" };  /* Harriman, Tuxedo, Sloatsburg */
+	size_t idx = 2;
 
-	sprintf(fname, "/tmp/njtransit-%s.html", station_code);
+	struct departures* d;    /* current station departures */
+	struct departures* p1;   /* previous station departures */
+	struct departures* p2;   /* two stations back departures */
 
-	if (expired(fname)) {
-		fetch_departure_vision(fname);
+	d = fetch_departures(route[idx]);
+	p1 = fetch_departures(route[idx-1]);
+	p2 = fetch_departures(route[idx-2]);
+
+
+}
+
+static void
+test_dep_parsing()
+{
+	struct departure* dep;
+
+	struct departures* deps = parse_njt_departures("../1~.html");
+
+	SLIST_FOREACH(dep, deps, entries) {
+		departure_dump(dep);
 	}
-
-	struct departures* deps = parse_njt_departures(fname);
 }
 
 int main()
 {
+	char cwd[1024];
+	printf("cwd: %s\n", getcwd(cwd, 1024));
 	curl_global_init(CURL_GLOBAL_ALL);
 
-	test2();
+//	test_dep_parsing();
+	show_departures();
 
 	curl_global_cleanup();
 
