@@ -9,11 +9,12 @@
 #include <sys/queue.h>
 #include <sysexits.h>
 #include <time.h>
+#include <ctype.h>
 #include <curl/curl.h>
 #include <unistd.h>
 #include "fetch.h"
 
-static int trace = 1;
+static int debug = 1;
 
 static void
 print_rex_error(int errcode, const regex_t *preg)
@@ -153,7 +154,7 @@ trscanner_create(struct trscanner *s, char *text, int len)
 
 	memset(s, 0, sizeof(struct trscanner));
 
-	rc = regcomp(&s->preg, "<td[^>]*>[\n]*([^\n]*)[\n ]*</td>", REG_EXTENDED | REG_ENHANCED | REG_MINIMAL);
+	rc = regcomp(&s->preg, "<td[^>]*>(.*)</td>", REG_EXTENDED | REG_ENHANCED | REG_MINIMAL);
 	if (rc != 0)
 		print_rex_error(rc, &s->preg);
 
@@ -191,6 +192,25 @@ trscanner_next(struct trscanner *s)
 	s->mlen = s->matches[1].rm_eo - s->matches[1].rm_so;
 	*s->send = 0;
 
+	/* skip space at start */
+
+	while (isspace(*s->sbeg)) {
+		s->sbeg++;
+		s->mlen--;
+	}
+
+	/* trim the end */
+
+	char *p = strchr(s->sbeg, '<');
+	if (p == NULL)
+		p = s->send;
+
+	while (isspace(*p) || *p == '<') {
+		*p = 0;
+		s->mlen--;
+		p--;
+	}
+
 //	printf("    td:%02x,[%s]\n", s->sbeg[0], s->sbeg);
 
 	s->matches[0].rm_so = s->matches[0].rm_eo;
@@ -219,8 +239,8 @@ parse_tr(char *text, int len, struct departures *list, struct departure **last_a
 		errx(1, "second table cell doesn't contain a destination station");
 
 	dep->destination = scan.sbeg; // 2
-	if (strstr(dep->destination, "&nbsp;-<i>SEC</i>") != NULL) {
-		strcpy(&dep->destination[strlen(dep->destination)-18], " (SEC)");
+	if (strstr(dep->destination, "&nbsp;-") != NULL) {
+		strcpy(&dep->destination[strlen(dep->destination)-8], " (SEC)");
 	}
 
 	if (!trscanner_next(&scan))
@@ -238,15 +258,10 @@ parse_tr(char *text, int len, struct departures *list, struct departure **last_a
 
 	dep->train = scan.sbeg; // 5
 
-	if (!trscanner_next(&scan))
-		errx(1, "no status found");
-
-	dep->status = scan.sbeg; // 6
+	if (trscanner_next(&scan))
+		dep->status = scan.sbeg; // 6
 
 	trscanner_destroy(&scan);
-
-	if (trace)
-		departure_dump(dep);
 
 	if (*last_added == NULL)
 		SLIST_INSERT_HEAD(list, dep, entries);
@@ -273,7 +288,7 @@ parse_njt_departures(const char *fname)
 	if (rc != 0)
 		err(rc, "cannot read file");
 
-	rc = regcomp(&preg, "<tr (.*)</tr>", REG_EXTENDED | REG_ENHANCED | REG_MINIMAL);
+	rc = regcomp(&preg, "<tr[ *](.*)</tr>", REG_EXTENDED | REG_ENHANCED | REG_MINIMAL);
 	if (rc != 0)
 		print_rex_error(rc, &preg);
 
@@ -312,30 +327,39 @@ expired(const char *fname)
 	struct stat st;
 
 	int rc = stat(fname, &st);
-	if (rc != 0)
+	if (rc != 0) {
+		if (debug)
+			printf("%s doesn't exist\n", fname);
 		return 1;
+	}
 
-	return 0;
-	if (st.st_mtime + 60 < time(NULL))
+	if (st.st_mtime + 60 < time(NULL)) {
+		if (debug)
+			printf("%s expired\n", fname);
 		return 1;
+	}
 
 	return 0;
 }
 
-static const char *njt_departure_vision = "http://dv.njtransit.com/mobile/tid-mobile.aspx?SID=%s&SORT=A";
-//static const char *njt_departure_vision = "http://127.0.0.1:8000/1.html";
-
 static struct departures*
 fetch_departures(const char *station_code)
 {
+	const char *api_url = "http://dv.njtransit.com/mobile/tid-mobile.aspx?SID=%s&SORT=A";
+	if (debug)
+		api_url = "http://127.0.0.1:8000/njtransit-%s.html";
+
 	char fname[PATH_MAX];
 	char url[100];
 
 	snprintf(fname, PATH_MAX, "/tmp/njtransit-%s.html", station_code);
-	snprintf(url, 100, njt_departure_vision, station_code);
+	snprintf(url, 100, api_url, station_code);
 
-	if (expired(fname))
+	if (expired(fname)) {
 		fetch(url, fname);
+		if (debug)
+			printf("%s fetched\n", fname);
+	}
 
 	struct departures* deps = parse_njt_departures(fname);
 	return deps;
@@ -362,20 +386,14 @@ show_departures()
 	struct departures* p2;   /* two stations back departures */
 
 	d = fetch_departures(route[idx]);
-	if (trace)
-		dump_departures(d);
-
 	p1 = fetch_departures(route[idx-1]);
-	if (trace)
-		dump_departures(p1);
-
 	p2 = fetch_departures(route[idx-2]);
-	if (trace)
+
+	if (debug) {
+		dump_departures(d);
+		dump_departures(p1);
 		dump_departures(p2);
-
-
-
-
+	}
 }
 
 static void
