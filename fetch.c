@@ -93,9 +93,14 @@ get_url(const char *url, struct response *resp)
 	curl = curl_easy_init();
 	curl_easy_setopt(curl, CURLOPT_URL, url);
 
-//	chunk = curl_slist_append(chunk, "User-Agent: curl/7.30.0");
-	chunk = curl_slist_append(chunk, "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8");
-	chunk = curl_slist_append(chunk, "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95");
+	chunk = curl_slist_append(chunk,
+	    "Accept: "
+	    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8");
+
+	chunk = curl_slist_append(chunk,
+	    "User-Agent: "
+	    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_5) "
+	    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95");
 
 	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
 	curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
@@ -105,26 +110,36 @@ get_url(const char *url, struct response *resp)
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, resp);
 	CURLcode err = curl_easy_perform(curl);
 	resp->error = err;
+
+	curl_slist_free_all(chunk);
 	curl_easy_cleanup(curl);
 
 	return err;
 }
 
-void
+int
 fetch(const char *url, const char *fname)
 {
+	int rc;
 	struct response resp;
 
 	memset(&resp, 0, sizeof(struct response));
 	resp.fname = fname;
 
-	int rc = get_url(url, &resp);
+	rc = get_url(url, &resp);
 
-	if (rc != 0)
-		errx(1, "Cannot fetch url %s. Curl error %d : %s", url, resp.error, curl_easy_strerror(resp.error));
+	if (rc != 0) {
+		fprintf(stderr, "Cannot fetch url %s. Curl error %d : %s\n",
+			url, resp.error, curl_easy_strerror(resp.error));
+		goto out;
+	}
 
-	if (resp.code != 200)
-		errx(1, "Cannot fetch url %s. HTTP error %d", url, resp.code);
-
+	if (resp.code != 200) {
+		fprintf(stderr, "Cannot fetch url %s. HTTP error %d\n", url, resp.code);
+		rc = resp.code;
+		goto out;
+	}
+out:
 	response_destroy(&resp);
+	return rc;
 }

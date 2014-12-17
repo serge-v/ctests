@@ -27,41 +27,6 @@ print_rex_error(int errcode, const regex_t *preg)
 	err(1, "%s", buf);
 }
 
-static void
-test1()
-{
-	int rc;
-
-	regex_t preg;
-
-//	rc = regcomp(&preg, "(http://)([^/]*)/(.*)/", REG_EXTENDED | REG_MINIMAL);
-	rc = regcomp(&preg, "<td[^>]*>[\n]*([^\n]*)[\n ]*</td>", REG_EXTENDED | REG_ENHANCED | REG_MINIMAL);
-	if (rc != 0)
-		print_rex_error(rc, &preg);
-
-	regmatch_t matches[10];
-
-//	const char *s = "http://cnn.com/articles/";
-	const char *s = "<td nowrap>\ncr test\n</td>";
-
-	rc = regexec(&preg, s, 10, matches, 0);
-	if (rc != 0)
-		print_rex_error(rc, &preg);
-
-	printf("rc: %d\n", rc);
-
-	for (int i = 0; i < 10; i++)
-	{
-		if (matches[i].rm_so == -1)
-			break;
-
-		printf("%d: %lld, %lld: [%.*s]\n", i, matches[i].rm_so, matches[i].rm_eo,
-		       (int)(matches[i].rm_eo - matches[i].rm_so), &s[matches[i].rm_so]);
-	}
-
-	regfree(&preg);
-}
-
 static int
 read_text(const char *fname, char **text, size_t *len)
 {
@@ -122,9 +87,9 @@ struct departure
 {
 	char		*time;		// departure time
 	char		*destination;   // destination station name
-	char		*route;         // train route name
+	char		*line;          // rail line name
 	char		*train;         // train label or number
-	char		*platform;      // departure platform
+	char		*track;         // departure track label or number
 	char		*status;        // status
 	SLIST_ENTRY(departure) entries;
 };
@@ -135,17 +100,17 @@ struct departure
 #define YELLOW  "\x1b[33m"
 #define GREEN   "\x1b[32m"
 
-#define COL_TIME        BLACK  "[%7s]"   CEND
-#define COL_TRAIN       RED    "[%5s]"   CEND
-#define COL_DEST        YELLOW "[%-20s]" CEND
-#define COL_TRACK       GREEN  "[%3s]"   CEND
+#define COL_TIME        BLACK  "%7s"   CEND
+#define COL_TRAIN       RED    "%5s"   CEND
+#define COL_DEST        YELLOW "%-20s" CEND
+#define COL_TRACK       GREEN  "%3s"   CEND
 
 static void
 departure_dump(struct departure *d)
 {
 	printf(COL_TIME COL_TRAIN COL_DEST COL_TRACK "%s\n",
 		d->time, d->train, d->destination,
-		d->platform, d->status);
+		d->track, d->status);
 }
 
 static void
@@ -241,18 +206,20 @@ parse_tr(char *text, int len, struct departures *list, struct departure **last_a
 
 	dep->destination = scan.sbeg; // 2
 	if (strstr(dep->destination, "&nbsp;-") != NULL) {
-		strcpy(&dep->destination[strlen(dep->destination)-8], " (SEC)");
+		strcpy(&dep->destination[strlen(dep->destination)-7], " (SEC)");
 	}
 
 	if (!trscanner_next(&scan))
 		errx(1, "no track found");
 
-	dep->platform = scan.sbeg; // 3
+	dep->track = scan.sbeg; // 3
+	if (strcmp("Single", dep->track) == 0)
+		strcpy(dep->track, "1");
 
 	if (!trscanner_next(&scan))
 		errx(1, "no line found");
 
-	dep->route = scan.sbeg; // 4
+	dep->line = scan.sbeg; // 4
 
 	if (!trscanner_next(&scan))
 		errx(1, "no train found");
@@ -274,7 +241,7 @@ parse_tr(char *text, int len, struct departures *list, struct departure **last_a
 
 
 static struct departures *
-parse_njt_departures(const char *fname)
+departures_parse(const char *fname)
 {
 	int rc;
 	regex_t preg;
@@ -344,7 +311,7 @@ expired(const char *fname)
 }
 
 static struct departures*
-fetch_departures(const char *station_code)
+departures_fetch(const char *station_code)
 {
 	const char *api_url = "http://dv.njtransit.com/mobile/tid-mobile.aspx?SID=%s&SORT=A";
 	if (debug)
@@ -357,17 +324,20 @@ fetch_departures(const char *station_code)
 	snprintf(url, 100, api_url, station_code);
 
 	if (expired(fname)) {
-		fetch(url, fname);
+		if (fetch(url, fname) != 0)
+			return NULL;
+
 		if (debug)
 			printf("%s fetched\n", fname);
 	}
 
-	struct departures* deps = parse_njt_departures(fname);
+	struct departures* deps = departures_parse(fname);
+
 	return deps;
 }
 
 static void
-dump_departures(struct departures *deps)
+departures_dump(struct departures *deps)
 {
 	struct departure* dep;
 
@@ -377,24 +347,44 @@ dump_departures(struct departures *deps)
 }
 
 static void
-show_departures()
+departures_destroy(struct departures *deps)
 {
-	char* route[] = { "RM", "TC", "XG" };  /* Harriman, Tuxedo, Sloatsburg */
-	size_t idx = 2;
+	if (deps == NULL)
+		return;
 
-	struct departures* d;    /* current station departures */
-	struct departures* p1;   /* previous station departures */
-	struct departures* p2;   /* two stations back departures */
+	struct departure *dep;
 
-	d = fetch_departures(route[idx]);
-	p1 = fetch_departures(route[idx-1]);
-	p2 = fetch_departures(route[idx-2]);
-
-	if (debug) {
-		dump_departures(d);
-		dump_departures(p1);
-		dump_departures(p2);
+	while (!SLIST_EMPTY(deps)) {
+		dep = SLIST_FIRST(deps);
+		SLIST_REMOVE_HEAD(deps, entries);
+		free(dep);
 	}
+}
+
+static void
+departures_print_upcoming()
+{
+	char* route[] = { "XG", "TC", "RM" };
+	size_t i;
+
+	struct departures* dlist[3];
+	memset(dlist, 0, 3);
+
+	for (i = 0; i < 3; i++) {
+
+		dlist[i] = departures_fetch(route[i]);
+
+		if (dlist[i] == NULL) {
+			fprintf(stderr, "Cannot get departures for station code %s\n", route[i]);
+			continue;
+		}
+
+		if (debug)
+			departures_dump(dlist[i]);
+	}
+
+	for (i = 0; i < 3; i++)
+		departures_destroy(dlist[i]);
 }
 
 int main()
@@ -403,7 +393,7 @@ int main()
 	printf("cwd: %s\n", getcwd(cwd, 1024));
 	curl_global_init(CURL_GLOBAL_ALL);
 
-	show_departures();
+	departures_print_upcoming();
 
 	curl_global_cleanup();
 
