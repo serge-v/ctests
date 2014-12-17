@@ -13,7 +13,7 @@
 #include <unistd.h>
 #include "fetch.h"
 
-static int trace = 0;
+static int trace = 1;
 
 static void
 print_rex_error(int errcode, const regex_t *preg)
@@ -202,21 +202,21 @@ trscanner_next(struct trscanner *s)
 SLIST_HEAD(departures, departure);
 
 static void
-parse_tr(char *text, int start, int end, struct departures *list, struct departure **last_added)
+parse_tr(char *text, int len, struct departures *list, struct departure **last_added)
 {
 	struct trscanner scan;
 	struct departure *dep;
 
-	trscanner_create(&scan, &text[start], end - start);
+	trscanner_create(&scan, text, len);
 	dep = calloc(1, sizeof(struct departure));
 
 	if (!trscanner_next(&scan))
-		err(EX_DATAERR, "first table cell doesn't contain a time");
+		err(1, "first table cell doesn't contain a time");
 
 	dep->time = scan.sbeg; // 1
 
 	if (!trscanner_next(&scan))
-		err(EX_DATAERR, "second table cell doesn't contain a destination station");
+		errx(1, "second table cell doesn't contain a destination station");
 
 	dep->destination = scan.sbeg; // 2
 	if (strstr(dep->destination, "&nbsp;-<i>SEC</i>") != NULL) {
@@ -224,22 +224,22 @@ parse_tr(char *text, int start, int end, struct departures *list, struct departu
 	}
 
 	if (!trscanner_next(&scan))
-		err(EX_DATAERR, "second table cell doesn't contain a destination station");
+		errx(1, "no track found");
 
 	dep->platform = scan.sbeg; // 3
 
 	if (!trscanner_next(&scan))
-		err(EX_DATAERR, "second table cell doesn't contain a destination station");
+		errx(1, "no line found");
 
 	dep->route = scan.sbeg; // 4
 
 	if (!trscanner_next(&scan))
-		err(EX_DATAERR, "second table cell doesn't contain a destination station");
+		errx(1, "no train found");
 
 	dep->train = scan.sbeg; // 5
 
 	if (!trscanner_next(&scan))
-		err(EX_DATAERR, "second table cell doesn't contain a destination station");
+		errx(1, "no status found");
 
 	dep->status = scan.sbeg; // 6
 
@@ -295,7 +295,7 @@ parse_njt_departures(const char *fname)
 		if (matches[0].rm_so == -1)
 			break;
 
-		parse_tr(text, matches[1].rm_so, matches[1].rm_eo, dlist, &last_added);
+		parse_tr(&text[matches[1].rm_so], matches[1].rm_eo - matches[1].rm_so, dlist, &last_added);
 
 		matches[0].rm_so = matches[0].rm_eo;
 		matches[0].rm_eo = len;
@@ -315,13 +315,15 @@ expired(const char *fname)
 	if (rc != 0)
 		return 1;
 
+	return 0;
 	if (st.st_mtime + 60 < time(NULL))
 		return 1;
 
 	return 0;
 }
 
-static const char *njt_departure_vision = "http://dv.njtransit.com/mobile/tid-mobile.aspx?SID=%s";
+static const char *njt_departure_vision = "http://dv.njtransit.com/mobile/tid-mobile.aspx?SID=%s&SORT=A";
+//static const char *njt_departure_vision = "http://127.0.0.1:8000/1.html";
 
 static struct departures*
 fetch_departures(const char *station_code)
@@ -340,9 +342,19 @@ fetch_departures(const char *station_code)
 }
 
 static void
+dump_departures(struct departures *deps)
+{
+	struct departure* dep;
+
+	SLIST_FOREACH(dep, deps, entries) {
+		departure_dump(dep);
+	}
+}
+
+static void
 show_departures()
 {
-	char* route[] = { "HR", "TX", "XG" };  /* Harriman, Tuxedo, Sloatsburg */
+	char* route[] = { "RM", "TC", "XG" };  /* Harriman, Tuxedo, Sloatsburg */
 	size_t idx = 2;
 
 	struct departures* d;    /* current station departures */
@@ -350,8 +362,18 @@ show_departures()
 	struct departures* p2;   /* two stations back departures */
 
 	d = fetch_departures(route[idx]);
+	if (trace)
+		dump_departures(d);
+
 	p1 = fetch_departures(route[idx-1]);
+	if (trace)
+		dump_departures(p1);
+
 	p2 = fetch_departures(route[idx-2]);
+	if (trace)
+		dump_departures(p2);
+
+
 
 
 }

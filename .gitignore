@@ -44,10 +44,21 @@ stamp-h1
 
 tags
 *~.*
+*~
 
 curltest
 dedupints
 defines
 eatmemory
 rextest
+
+# cmake files
+
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Debug/
+Project.build/
+Project.xcodeproj/
+*.cmake
 
