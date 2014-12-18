@@ -15,7 +15,7 @@
 
 #include "fetch.h"
 
-static int debug = 1;
+static int debug = 0;
 
 static void
 print_rex_error(int errcode, const regex_t *preg)
@@ -361,10 +361,46 @@ departures_destroy(struct departures *deps)
 	}
 }
 
+static struct departure *
+departures_nearest(struct departures *deps, const char *dest)
+{
+	struct departure *dep;
+
+	SLIST_FOREACH(dep, deps, entries) {
+		if (strcmp(dest, dep->destination) == 0)
+			return dep;
+	}
+
+	return NULL;
+}
+
+static void
+departures_latest_status(struct departures **dlist, const char **stations, size_t n, const char *train)
+{
+	struct departure *dep;
+	int i;
+	const char *status = NULL;
+	const char *station = NULL;
+
+	for (i = 0; i < n; i++) {
+		SLIST_FOREACH(dep, dlist[i], entries) {
+			if (strcmp(train, dep->train) != 0)
+				continue;
+
+			if (strncmp("in ", dep->status, 3) == 0) {
+				status = dep->status;
+				station = stations[i];
+				printf("%s at %s\n", status, station);
+			}
+		}
+	}
+}
+
 static void
 departures_print_upcoming()
 {
-	char* route[] = { "XG", "TC", "RM" };
+	const char *stations[] = {"Sloatsburg", "Tuxedo", "Harriman" };
+	const char *route[] = { "XG", "TC", "RM" };
 	size_t i;
 
 	struct departures* dlist[3];
@@ -383,20 +419,26 @@ departures_print_upcoming()
 			departures_dump(dlist[i]);
 	}
 
+	const char *dest = "Hoboken (SEC)";
+	struct departure *nearest = departures_nearest(dlist[0], dest);
+
+	if (nearest != NULL) {
+		printf("Nearest train to %s from %s\n", dest, route[0]);
+		printf("%s #%s, Track %s %s\n",
+		       nearest->time, nearest->train, nearest->track, nearest->status);
+		departures_latest_status(dlist, stations, 3, nearest->train);
+	} else {
+		printf("No trains to %s from %s\n", dest, route[0]);
+	}
+
 	for (i = 0; i < 3; i++)
 		departures_destroy(dlist[i]);
 }
 
 int main()
 {
-	char cwd[1024];
-	printf("cwd: %s\n", getcwd(cwd, 1024));
 	curl_global_init(CURL_GLOBAL_ALL);
-
 	departures_print_upcoming();
-
 	curl_global_cleanup();
-
 	return 0;
 }
-
