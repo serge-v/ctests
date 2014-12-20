@@ -8,7 +8,7 @@ target_link_libraries(curltest curl)
 add_executable(rextest rextest.c)
 target_link_libraries(rextest)
 
-add_executable(departures departures.c fetch.c)
+add_executable(departures departures.c fetch.c stations.c)
 target_link_libraries(departures curl)
 
 add_test(NAME val

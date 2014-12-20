@@ -12,10 +12,42 @@
 #include <sysexits.h>
 #include <time.h>
 #include <unistd.h>
+#include <getopt.h>
 
 #include "fetch.h"
+#include "stations.h"
 
-static int debug = 0;
+static int debug = 0;		      /* debug paramater */
+static char *station_from = NULL;     /* departure station */
+static char *station_to = NULL;       /* destination station */
+
+static struct option longopts[] = {
+	{ "list",  no_argument,       NULL, 'l' },
+	{ "from",  required_argument, NULL, 'f' },
+	{ "to",    required_argument, NULL, 't' },
+	{ "debug", no_argument,       NULL, 'd' },
+	{ "help",  no_argument,       NULL, 'h' },
+	{ NULL,    0,                 NULL,  0 }
+};
+
+static void
+synopsis()
+{
+	printf("Usage: departured [-ldh] [-f STATION_CODE] [-t STATION]\n");
+}
+
+static void
+usage()
+{
+	printf(
+		"Usage: departured [OPTIONS]\n"
+		"Options:\n"
+		"    --list, -l            List stations\n"
+		"    --from, -f STATION    Get nearest departure and train status\n"
+		"    --to, -t STATION      Set destination station\n"
+		"    --debug, -d           Output debug information\n"
+		);
+}
 
 static void
 print_rex_error(int errcode, const regex_t *preg)
@@ -31,8 +63,8 @@ static int
 read_text(const char *fname, char **text, size_t *len)
 {
 	struct stat st;
-	FILE* f = NULL;
-	char* buff = NULL;
+	FILE *f = NULL;
+	char *buff = NULL;
 	int ret = -1;
 
 	if (stat(fname, &st) != 0)
@@ -396,22 +428,43 @@ departures_latest_status(struct departures **dlist, const char **stations, size_
 	}
 }
 
-static void
-departures_print_upcoming()
+static size_t
+route_idx(const char *code, const char *route[], size_t n_route)
 {
-	const char *stations[] = {"Sloatsburg", "Tuxedo", "Harriman" };
-	const char *route[] = { "XG", "TC", "RM" };
 	size_t i;
+	for (i = 0; i < n_route; i++) {
+		if (strcmp(code, route[i]) == 0)
+			return i;
+	}
+	return -1;
+}
 
-	struct departures* dlist[3];
-	memset(dlist, 0, 3);
 
-	for (i = 0; i < 3; i++) {
+static void
+departures_print_upcoming(const char* from, const char *dest, const char *route[], size_t n_route)
+{
+	size_t i;
+	size_t idx = route_idx(from, route, n_route);
+	size_t dest_idx = n_route - 1;
 
-		dlist[i] = departures_fetch(route[i]);
+	if (idx == -1) {
+		printf("Invalid station code\n");
+		return;
+	}
+
+	const int MAXN = 3 ; // max previous stations
+	size_t last_idx = idx + MAXN - 1;
+	if (last_idx > n_route-1)
+		last_idx = n_route-1;
+
+	struct departures **dlist = calloc(n_route, sizeof(struct departures));
+
+	for (i = 0; i < n_route; i++) {
+
+		dlist[i] = departures_fetch(route[idx+i]);
 
 		if (dlist[i] == NULL) {
-			fprintf(stderr, "Cannot get departures for station code %s\n", route[i]);
+			fprintf(stderr, "Cannot get departures for station code %s\n", route[idx+i]);
 			continue;
 		}
 
@@ -419,26 +472,63 @@ departures_print_upcoming()
 			departures_dump(dlist[i]);
 	}
 
-	const char *dest = "Hoboken (SEC)";
-	struct departure *nearest = departures_nearest(dlist[0], dest);
+	struct departure *nearest = departures_nearest(dlist[0], station_name(dest_idx));
 
 	if (nearest != NULL) {
-		printf("Nearest train to %s from %s\n", dest, route[0]);
+		printf("Nearest train to %s from %s\n", dest, route[idx]);
 		printf("%s #%s, Track %s %s\n",
-		       nearest->time, nearest->train, nearest->track, nearest->status);
-		departures_latest_status(dlist, stations, 3, nearest->train);
+			nearest->time, nearest->train, nearest->track, nearest->status);
+		departures_latest_status(dlist, stations, MAXN, nearest->train);
 	} else {
-		printf("No trains to %s from %s\n", dest, route[0]);
+		printf("No trains to %s from %s\n", dest, route[idx]);
 	}
 
-	for (i = 0; i < 3; i++)
+	for (i = 0; i < MAXN; i++)
 		departures_destroy(dlist[i]);
 }
 
-int main()
+int main(int argc, char **argv)
 {
+	if (argc < 2) {
+		synopsis();
+		return 1;
+	}
+
+	int ch;
+
+	while ((ch = getopt_long(argc, argv, "lhds:f:", longopts, NULL)) != -1) {
+		switch (ch) {
+			case 'd':
+				debug = 1;
+				break;
+			case 'l':
+				stations_list();
+				return 0;
+			case 'f':
+				station_from = optarg;
+				break;
+			case 't':
+				station_to = optarg;
+				break;
+			case 'h':
+				usage();
+				return 1;
+			default:
+				synopsis();
+				return 1;
+		}
+	}
+
+	if (station_from == NULL)
+		errx(1, "Origin station is not specified");
+
 	curl_global_init(CURL_GLOBAL_ALL);
-	departures_print_upcoming();
+
+	static const char *route[] = { "RM", "TC", "XG", "SF", "WH", "HG" };
+	const size_t N = sizeof(route) / sizeof(route[0]);
+
+	departures_print_upcoming(station_from, station_to, route, N);
+
 	curl_global_cleanup();
 	return 0;
 }
