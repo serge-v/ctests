@@ -2,25 +2,17 @@
 #include <string.h>
 #include <curl/curl.h>
 
-#define FROM    "<serge0x76@gmail.com>"
-#define TO      "<voilokov@gmail.com>"
-#define CC      "<serge0x76@gmail.com>"
+static const char *message_template =
 
-static const char *payload_text[] =
-{
-	"Date: Mon, 29 Nov 2010 21:54:29 +1100\r\n",
-	"To: " TO "\r\n",
-	"From: " FROM "(Example User)\r\n",
-	"Cc: " CC "(Another example User)\r\n",
-	"Message-ID: <dcd7cb36-11db-487a-9f3a-e652a9458efd@rfcpedant.example.org>\r\n",
-	"Subject: SMTP example message\r\n",
-	"\r\n", /* empty line to divide headers from body, see RFC5322 */
-	"The body of the message starts here.\r\n",
-	"\r\n",
-	"It could be a lot of lines, could be MIME encoded, whatever.\r\n",
-	"Check RFC5322.\r\n",
-	NULL
-};
+	"Date: Mon, 29 Nov 2010 21:54:29 +1100\r\n"
+	"To: %s\r\n"
+	"From: %s\r\n"
+	"Cc: " CC "(Another example User)\r\n"
+	"Subject: SMTP example message\r\n"
+	"\r\n"
+	"The body of the message starts here.\r\n"
+	"\r\n"
+
 
 struct upload_status
 {
@@ -49,7 +41,20 @@ static size_t payload_source(void *ptr, size_t size, size_t nmemb, void *userp)
 	return 0;
 }
 
-int main(void)
+/* gmail smtp sender */
+
+struct gmail
+{
+	const char *from;              /* sender */
+	const char **to;               /* recipients */
+	const char *user;              /* smtp user */
+	const char *pin_password;      /* pinentry path to smtp password item */
+	const char *subject;           /* email subject */
+	const char *body;              /* body of the mail in plain text format */
+};
+
+
+int gmail_send(struct mail* m)
 {
 	CURL *curl;
 	CURLcode res = CURLE_OK;
@@ -64,19 +69,32 @@ int main(void)
 
 	curl_easy_setopt(curl, CURLOPT_URL, "smtp://smtp.gmail.com:587");
 	curl_easy_setopt(curl, CURLOPT_USE_SSL, (long)CURLUSESSL_ALL);
-	curl_easy_setopt(curl, CURLOPT_CAINFO, "./certificate.pem");
+//	curl_easy_setopt(curl, CURLOPT_CAINFO, "./certificate.pem");
 
-	curl_easy_setopt(curl, CURLOPT_MAIL_FROM, FROM);
-	curl_easy_setopt(curl, CURLOPT_USERNAME, "serge0x76@gmail.com");
-	curl_easy_setopt(curl, CURLOPT_PASSWORD, "xxxxxxx");
+	curl_easy_setopt(curl, CURLOPT_MAIL_FROM, m->from);
+	curl_easy_setopt(curl, CURLOPT_USERNAME, m->user);
+
+	char pincmd[100];
+	snprontf(pincmd, 100, "pass %s", m->pin_password);
+	FILE *f = popen(pincmd, "r");
+	if (f == NULL) {
+		fprintf(stderr, "Cannot read password using %s", pincmd);
+		return 1;
+	}
+
+	char password[100];
+	fread(password, 1, 100, f);
+	curl_easy_setopt(curl, CURLOPT_PASSWORD, password);
+	fclose(f);
 
 	recipients = curl_slist_append(recipients, TO);
-	recipients = curl_slist_append(recipients, CC);
+//	recipients = curl_slist_append(recipients, CC);
 	curl_easy_setopt(curl, CURLOPT_MAIL_RCPT, recipients);
 
 	curl_easy_setopt(curl, CURLOPT_READFUNCTION, payload_source);
 	curl_easy_setopt(curl, CURLOPT_READDATA, &upload_ctx);
 	curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
+//	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 
 	res = curl_easy_perform(curl);
 
@@ -85,16 +103,19 @@ int main(void)
 			curl_easy_strerror(res));
 
 	curl_slist_free_all(recipients);
-
-	/* curl won't send the QUIT command until you call cleanup, so you should be
-	 * able to re-use this connection for additional messages (setting
-	 * CURLOPT_MAIL_FROM and CURLOPT_MAIL_RCPT as required, and calling
-	 * curl_easy_perform() again. It may not be a good idea to keep the
-	 * connection open for a very long time though (more than a few minutes may
-	 * result in the server timing out the connection), and you do want to clean
-	 * up in the end.
-	 */
 	curl_easy_cleanup(curl);
 
 	return (int)res;
 }
+
+int main()
+{
+	struct gmail m = {
+		.from = "serge0x76@gmail.com",
+		.to = "voilokov@gmail.com",
+		.subject = "test",
+		.body = "test body",
+
+	};
+}
+

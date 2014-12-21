@@ -13,6 +13,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <inttypes.h>
 
 #include "fetch.h"
 #include "stations.h"
@@ -85,7 +86,7 @@ read_text(const char *fname, char **text, size_t *len)
 	buff = malloc(st.st_size + 1);
 	if (!buff)
 	{
-		printf("Cannot allocate %lld bytes. Error: %d\n", st.st_size + 1, errno);
+		printf("Cannot allocate %" PRId64 " bytes. Error: %d\n", st.st_size + 1, errno);
 		goto out;
 	}
 
