@@ -17,7 +17,8 @@
 #include "fetch.h"
 #include "stations.h"
 
-static int debug = 0;		      /* debug paramater */
+static int debug = 0;		      /* debug parameter */
+static int debug_server = 0;          /* make requests to debug local server */
 static char *station_from = NULL;     /* departure station */
 static char *station_to = NULL;       /* destination station */
 
@@ -27,6 +28,7 @@ static struct option longopts[] = {
 	{ "to",    required_argument, NULL, 't' },
 	{ "debug", no_argument,       NULL, 'd' },
 	{ "help",  no_argument,       NULL, 'h' },
+	{ "debug-server", no_argument, NULL, 's' },
 	{ NULL,    0,                 NULL,  0 }
 };
 
@@ -346,7 +348,7 @@ static struct departures*
 departures_fetch(const char *station_code)
 {
 	const char *api_url = "http://dv.njtransit.com/mobile/tid-mobile.aspx?SID=%s&SORT=A";
-	if (debug)
+	if (debug_server)
 		api_url = "http://127.0.0.1:8000/njtransit-%s.html";
 
 	char fname[PATH_MAX];
@@ -399,7 +401,7 @@ departures_nearest(struct departures *deps, const char *dest)
 	struct departure *dep;
 
 	SLIST_FOREACH(dep, deps, entries) {
-		if (strcmp(dest, dep->destination) == 0)
+		if (strstr(dep->destination, dest) != NULL)
 			return dep;
 	}
 
@@ -407,22 +409,25 @@ departures_nearest(struct departures *deps, const char *dest)
 }
 
 static void
-departures_latest_status(struct departures **dlist, const char **stations, size_t n, const char *train)
+departures_latest_status(struct departures **dlist, const char **route, size_t n, const char *train)
 {
 	struct departure *dep;
 	int i;
 	const char *status = NULL;
-	const char *station = NULL;
+	const char *station_code = NULL;
 
 	for (i = 0; i < n; i++) {
 		SLIST_FOREACH(dep, dlist[i], entries) {
+			if (dep == NULL)
+				break;
+
 			if (strcmp(train, dep->train) != 0)
 				continue;
 
 			if (strncmp("in ", dep->status, 3) == 0) {
 				status = dep->status;
-				station = stations[i];
-				printf("%s at %s\n", status, station);
+				station_code = route[i];
+				printf("%s at %s\n", status, station_code);
 			}
 		}
 	}
@@ -452,38 +457,43 @@ departures_print_upcoming(const char* from, const char *dest, const char *route[
 		return;
 	}
 
-	const int MAXN = 3 ; // max previous stations
-	size_t last_idx = idx + MAXN - 1;
-	if (last_idx > n_route-1)
-		last_idx = n_route-1;
+	const int MAXPREV = 3 ; // max previous stations
 
-	struct departures **dlist = calloc(n_route, sizeof(struct departures));
+	struct departures **dlist = calloc(MAXPREV, sizeof(struct departures));
 
-	for (i = 0; i < n_route; i++) {
+	for (i = 0; i < MAXPREV; i++) {
 
-		dlist[i] = departures_fetch(route[idx+i]);
+		if (idx - i + 1 == 0)
+			break;
+
+		dlist[i] = departures_fetch(route[idx-i]);
 
 		if (dlist[i] == NULL) {
-			fprintf(stderr, "Cannot get departures for station code %s\n", route[idx+i]);
-			continue;
+			fprintf(stderr, "Cannot get departures for station code %s\n", route[idx-i]);
+			return;
 		}
 
-		if (debug)
+		if (debug) {
 			departures_dump(dlist[i]);
+			printf("Got departures for station %s\n", route[idx-i]);
+		}
 	}
 
-	struct departure *nearest = departures_nearest(dlist[0], station_name(dest_idx));
+	const char *dest_name = station_name(route[dest_idx]);
+	const char *from_name = station_name(route[idx]);
+
+	struct departure *nearest = departures_nearest(dlist[0], dest_name);
 
 	if (nearest != NULL) {
-		printf("Nearest train to %s from %s\n", dest, route[idx]);
+		printf("Nearest train to %s from %s\n", dest_name, from_name);
 		printf("%s #%s, Track %s %s\n",
 			nearest->time, nearest->train, nearest->track, nearest->status);
-		departures_latest_status(dlist, stations, MAXN, nearest->train);
+		departures_latest_status(dlist, route, MAXPREV, nearest->train);
 	} else {
-		printf("No trains to %s from %s\n", dest, route[idx]);
+		printf("No trains to %s from %s\n", dest_name, from_name);
 	}
 
-	for (i = 0; i < MAXN; i++)
+	for (i = 0; i < MAXPREV; i++)
 		departures_destroy(dlist[i]);
 }
 
@@ -524,7 +534,7 @@ int main(int argc, char **argv)
 
 	curl_global_init(CURL_GLOBAL_ALL);
 
-	static const char *route[] = { "RM", "TC", "XG", "SF", "WH", "HG" };
+	static const char *route[] = { "RM", "TC", "XG", "SF", "TS", "HB" };
 	const size_t N = sizeof(route) / sizeof(route[0]);
 
 	departures_print_upcoming(station_from, station_to, route, N);
