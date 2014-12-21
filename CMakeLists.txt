@@ -11,6 +11,9 @@ target_link_libraries(rextest)
 add_executable(departures departures.c fetch.c stations.c)
 target_link_libraries(departures curl)
 
+add_executable(curlsmtp curlsmtp.c)
+target_link_libraries(curlsmtp curl)
+
 add_test(NAME val
 COMMAND valgrind --leak-check=full --show-reachable=no --track-fds=yes --error-exitcode=1
 ${CMAKE_CURRENT_BINARY_DIR}/departures
