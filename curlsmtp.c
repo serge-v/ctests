@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <curl/curl.h>
-
+/*
 static const char *message_template =
 
 	"Date: Mon, 29 Nov 2010 21:54:29 +1100\r\n"
@@ -12,6 +12,7 @@ static const char *message_template =
 	"\r\n"
 	"The body of the message starts here.\r\n"
 	"\r\n"
+*/
 
 struct buf
 {
@@ -24,27 +25,27 @@ struct message
 {
 	const char *date;
 	const char *to;
-	const char* from;
+	const char *from;
 	const char *subject;
 	const char *body;
-	const char *payload; /* composed message afrer compose() */
+	struct buf payload; /* composed message after compose() */
 };
 
 static void
 buf_cat(struct buf *b, const char *s, size_t n)
 {
-	if (b->len + n > cap) {
-		b->cap =
-		s = realloc(s, b->len + n)
+	if (b->len + n > b->cap) {
+		b->cap = (b->len + n) * 2;
+		s = realloc(s, b->cap);
+	}
+	strncat(b->s, s, n);
 }
 
 static void
 message_compose(struct message *m)
 {
-	if (m->payload)
-		free(m->payload);
-
-	m->payload = realloc()
+	memset(m, 0, sizeof(struct message);
+	m->payload.s = malloc(1024);
 }
 
 struct upload_status
