@@ -1,18 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <curl/curl.h>
-/*
-static const char *message_template =
-
-	"Date: Mon, 29 Nov 2010 21:54:29 +1100\r\n"
-	"To: %s\r\n"
-	"From: %s\r\n"
-	"Cc: " CC "(Another example User)\r\n"
-	"Subject: SMTP example message\r\n"
-	"\r\n"
-	"The body of the message starts here.\r\n"
-	"\r\n"
-*/
+#include <stdlib.h>
 
 struct buf
 {
@@ -21,95 +10,139 @@ struct buf
 	size_t cap;
 };
 
+static void
+buf_append(struct buf *b, const char *s, size_t n)
+{
+	if (b->s == NULL) {
+		b->s = malloc(1024);
+	} else 	if (b->len + n > b->cap) {
+		b->cap = (b->len + n) * 2;
+		b->s = realloc(b->s, b->cap);
+	}
+	strncat(b->s, s, n);
+	b->len += n;
+}
+
 struct message
 {
-	const char *date;
 	const char *to;
 	const char *from;
 	const char *subject;
 	const char *body;
-	struct buf payload; /* composed message after compose() */
+	struct buf b;       /* composed message after compose() */
 };
 
-static void
-buf_cat(struct buf *b, const char *s, size_t n)
-{
-	if (b->len + n > b->cap) {
-		b->cap = (b->len + n) * 2;
-		s = realloc(s, b->cap);
-	}
-	strncat(b->s, s, n);
-}
-
-static void
+static int
 message_compose(struct message *m)
 {
-	memset(m, 0, sizeof(struct message);
-	m->payload.s = malloc(1024);
+	if (m == NULL) {
+		fprintf(stdout, "Message is null\n");
+		return 1;
+	}
+
+	if (m->to == NULL) {
+		fprintf(stdout, "Recipient is not specified\n");
+		return 1;
+	}
+
+	if (m->from == NULL) {
+		fprintf(stdout, "Sender is not specified\n");
+		return 1;
+	}
+
+	if (m->body == NULL) {
+		fprintf(stdout, "Message body is empty\n");
+		return 1;
+	}
+
+	char s[1024];
+	const size_t sz = sizeof(s);
+
+	/* "Date: Mon, 29 Nov 2010 21:54:29 +1100\r\n" */
+
+	time_t now = time(NULL);
+
+	int n = strftime(s, sz, "Date: %a, %d %b %Y %T %z\r\n", gmtime(&now));
+	buf_append(&m->b, s, n);
+
+	n = snprintf(s, sz, "To: %s\r\n", m->to);
+	buf_append(&m->b, s, n);
+
+	n = snprintf(s, sz, "From: %s\r\n", m->from);
+	buf_append(&m->b, s, n);
+
+	if (m->subject != NULL) {
+		n = snprintf(s, sz, "Subject: %s\r\n", m->subject);
+		buf_append(&m->b, s, n);
+	}
+
+	buf_append(&m->b, "\r\n", 2);
+	buf_append(&m->b, m->body, strlen(m->body));
+	buf_append(&m->b, "\r\n", 2);
+
+	return 0;
 }
 
 struct upload_status
 {
-	int lines_read;
+	const char *text; /* composed message */
+	size_t pos;       /* current sending position */
+	size_t len;       /* message length */
 };
 
-static size_t payload_source(void *ptr, size_t size, size_t nmemb, void *userp)
+static size_t
+payload_source(void *ptr, size_t size, size_t nmemb, void *userp)
 {
-	struct upload_status *upload_ctx = (struct upload_status *)userp;
+	struct upload_status *status = (struct upload_status *)userp;
 	const char *data;
 
 	if ((size == 0) || (nmemb == 0) || ((size * nmemb) < 1))
 		return 0;
 
-	data = payload_text[upload_ctx->lines_read];
+	data = &status->text[status->pos];
 
-	if (data)
-	{
-		size_t len = strlen(data);
-		memcpy(ptr, data, len);
-		upload_ctx->lines_read++;
+	size_t write_len = size * nmemb;
+	size_t remain_len = status->len - status->pos;
 
-		return len;
-	}
+	if (remain_len < write_len)
+		write_len = remain_len;
 
-	return 0;
+	memcpy(ptr, data, write_len);
+	status->pos += write_len;
+
+	return write_len;
 }
 
 /* gmail smtp sender */
 
 struct gmail
 {
-	const char *from;              /* sender */
-	const char **to;               /* recipients */
+	const char *server;            /* smtp server */
 	const char *user;              /* smtp user */
 	const char *pin_password;      /* pinentry path to smtp password item */
-	const char *subject;           /* email subject */
-	const char *body;              /* body of the mail in plain text format */
+	int debug;                     /* using local server without credentials */
 };
 
-
-int gmail_send(struct mail* m)
+static int
+gmail_send(const struct gmail *g, struct message *m)
 {
 	CURL *curl;
 	CURLcode res = CURLE_OK;
 	struct curl_slist *recipients = NULL;
-	struct upload_status upload_ctx;
+	struct upload_status status;
 
-	upload_ctx.lines_read = 0;
+	status.pos = 0;
+	status.len = m->b.len;
+	status.text = m->b.s;
 
 	curl = curl_easy_init();
-	if (!curl)
+	if (!curl) {
+		fprintf(stderr, "Cannot init curl\n");
 		return 1;
-
-	curl_easy_setopt(curl, CURLOPT_URL, "smtp://smtp.gmail.com:587");
-	curl_easy_setopt(curl, CURLOPT_USE_SSL, (long)CURLUSESSL_ALL);
-//	curl_easy_setopt(curl, CURLOPT_CAINFO, "./certificate.pem");
-
-	curl_easy_setopt(curl, CURLOPT_MAIL_FROM, m->from);
-	curl_easy_setopt(curl, CURLOPT_USERNAME, m->user);
+	}
 
 	char pincmd[100];
-	snprontf(pincmd, 100, "pass %s", m->pin_password);
+	snprintf(pincmd, 100, "pass %s", g->pin_password);
 	FILE *f = popen(pincmd, "r");
 	if (f == NULL) {
 		fprintf(stderr, "Cannot read password using %s", pincmd);
@@ -117,18 +150,38 @@ int gmail_send(struct mail* m)
 	}
 
 	char password[100];
-	fread(password, 1, 100, f);
-	curl_easy_setopt(curl, CURLOPT_PASSWORD, password);
+	const size_t pwdlen = 16;
+
+	memset(password, 0, sizeof(password));
+	size_t n = fread(password, 1, sizeof(password), f);
 	fclose(f);
 
-	recipients = curl_slist_append(recipients, TO);
-//	recipients = curl_slist_append(recipients, CC);
-	curl_easy_setopt(curl, CURLOPT_MAIL_RCPT, recipients);
+	if (n == pwdlen+1 && password[pwdlen] == '\n') {
+		password[pwdlen] = 0;
+		n = pwdlen;
+	}
 
+	if (n != 16) {
+		fprintf(stderr, "Invalid gmail app password for pin %s\n", g->pin_password);
+		return 1;
+	}
+
+	if (g->debug) {
+		curl_easy_setopt(curl, CURLOPT_URL, "smtp://127.0.0.1:8025");
+		curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+	} else {
+		curl_easy_setopt(curl, CURLOPT_URL, g->server);
+		curl_easy_setopt(curl, CURLOPT_USE_SSL, (long)CURLUSESSL_ALL);
+		curl_easy_setopt(curl, CURLOPT_USERNAME, g->user);
+		curl_easy_setopt(curl, CURLOPT_PASSWORD, password);
+	}
+
+	curl_easy_setopt(curl, CURLOPT_MAIL_FROM, m->from);
+	recipients = curl_slist_append(recipients, m->to);
+	curl_easy_setopt(curl, CURLOPT_MAIL_RCPT, recipients);
 	curl_easy_setopt(curl, CURLOPT_READFUNCTION, payload_source);
-	curl_easy_setopt(curl, CURLOPT_READDATA, &upload_ctx);
+	curl_easy_setopt(curl, CURLOPT_READDATA, &status);
 	curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
-//	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 
 	res = curl_easy_perform(curl);
 
@@ -142,14 +195,34 @@ int gmail_send(struct mail* m)
 	return (int)res;
 }
 
-int main()
+int send_email_from_me(const char *to, const char *subject, const char *body)
 {
-	struct gmail m = {
-		.from = "serge0x76@gmail.com",
-		.to = "voilokov@gmail.com",
-		.subject = "test",
-		.body = "test body",
+	struct gmail g = {
+		.server = "smtp://smtp.gmail.com:587",
+		.user = "serge0x76@gmail.com",
+		.pin_password = "curlsmtp",
+		.debug = 0
 
 	};
+
+	struct message m = {
+		.from = "serge0x76@gmail.com",
+		.to = "voilokov@gmail.com",
+		.subject = subject,
+		.body = body
+	};
+
+	int rc = message_compose(&m);
+
+	if (rc != 0)
+		return 1;
+
+	rc = gmail_send(&g, &m);
+
+	return rc;
+}
+
+int main(int argc, char **argv)
+{
 }
 

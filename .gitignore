@@ -45,6 +45,7 @@ stamp-h1
 tags
 *~.*
 *~
+*.swp
 
 curltest
 dedupints

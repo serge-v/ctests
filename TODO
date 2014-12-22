@@ -1,4 +1,5 @@
 - display credits with station names and everywhere
 - create SV route
 - get departure by station name, not only by code
+- replace buf with bsd sbuf
 
