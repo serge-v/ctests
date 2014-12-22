@@ -53,6 +53,7 @@ usage()
 }
 
 static void
+
 print_rex_error(int errcode, const regex_t *preg)
 {
 	char buf[1000];

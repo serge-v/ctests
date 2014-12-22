@@ -13,6 +13,39 @@ static const char *message_template =
 	"The body of the message starts here.\r\n"
 	"\r\n"
 
+struct buf
+{
+	char *s;
+	size_t len;
+	size_t cap;
+};
+
+struct message
+{
+	const char *date;
+	const char *to;
+	const char* from;
+	const char *subject;
+	const char *body;
+	const char *payload; /* composed message afrer compose() */
+};
+
+static void
+buf_cat(struct buf *b, const char *s, size_t n)
+{
+	if (b->len + n > cap) {
+		b->cap =
+		s = realloc(s, b->len + n)
+}
+
+static void
+message_compose(struct message *m)
+{
+	if (m->payload)
+		free(m->payload);
+
+	m->payload = realloc()
+}
 
 struct upload_status
 {
