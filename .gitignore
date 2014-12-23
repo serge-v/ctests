@@ -22,6 +22,7 @@
 *.x86_64
 *.hex
 *.pyc
+*.log
 ctests.xcodeproj/
 
 # autoconf files

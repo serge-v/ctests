@@ -2,4 +2,6 @@
 - create SV route
 - get departure by station name, not only by code
 - replace buf with bsd sbuf
+- fetch url into .cache directory
+- do not recreate trscanner between rows
 

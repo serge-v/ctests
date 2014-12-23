@@ -22,6 +22,7 @@ static int debug = 0;		      /* debug parameter */
 static int debug_server = 0;          /* make requests to debug local server */
 static char *station_from = NULL;     /* departure station */
 static char *station_to = NULL;       /* destination station */
+static FILE* log = NULL;              /* verbose debug log */
 
 static struct option longopts[] = {
 	{ "list",  no_argument,       NULL, 'l' },
@@ -110,18 +111,20 @@ out:
 
 struct trscanner
 {
-	char		*text;          // text to scan
+	char            *text;          // text to scan
 	int             len;	        // maximum length
-	regex_t         preg;           // compiled <td>(.*)</td> regexp
-	regmatch_t      matches[2];     // current matches
-	char		*sbeg;          // group 1 start
-	char		*send;		// group 1 end
-	size_t          mlen;           // group 1 length
+	regex_t         p1;             // <td>
+	regex_t         p2;             // </td>
+	regmatch_t      m1;             // current matches
+	regmatch_t      m2;             // current matches
+	char            *sbeg;          // td inner text start
+	char            *send;          // td inner text end
+	size_t          mlen;           // td inner text length
 };
 
 struct departure
 {
-	char		*time;		// departure time
+	char		*time;          // departure time
 	char		*destination;   // destination station name
 	char		*line;          // rail line name
 	char		*train;         // train label or number
@@ -156,20 +159,28 @@ trscanner_create(struct trscanner *s, char *text, int len)
 
 	memset(s, 0, sizeof(struct trscanner));
 
-	rc = regcomp(&s->preg, "<td[^>]*>(.*)</td>", REG_EXTENDED | REG_ENHANCED | REG_MINIMAL);
+	if (debug)
+		fprintf(log, "scan tr: %.*s\n", len, text);
+
+	rc = regcomp(&s->p1, "<td[^>]*>", REG_EXTENDED);
 	if (rc != 0)
-		print_rex_error(rc, &s->preg);
+		print_rex_error(rc, &s->p1);
+
+	rc = regcomp(&s->p2, "</td>", REG_EXTENDED);
+	if (rc != 0)
+		print_rex_error(rc, &s->p2);
 
 	s->text = text;
 	s->len = len;
-	s->matches[0].rm_so = 0;
-	s->matches[0].rm_eo = len;
+	s->m1.rm_so = 0;
+	s->m1.rm_eo = len;
 }
 
 static void
 trscanner_destroy(struct trscanner *s)
 {
-	regfree(&s->preg);
+	regfree(&s->p1);
+	regfree(&s->p2);
 	memset(s, 0, sizeof(struct trscanner));
 }
 
@@ -178,20 +189,28 @@ trscanner_next(struct trscanner *s)
 {
 	int rc;
 
-	rc = regexec(&s->preg, s->text, TRGROUPS, s->matches, REG_STARTEND);
+	rc = regexec(&s->p1, s->text, 1, &s->m1, REG_STARTEND);
 
 	if (rc == REG_NOMATCH)
 		return 0;
 
 	if (rc != 0)
-		print_rex_error(rc, &s->preg);
+		print_rex_error(rc, &s->p1);
 
-	if (s->matches[0].rm_so == -1)
+	s->m2.rm_so = s->m1.rm_eo;
+	s->m2.rm_eo = s->len;
+
+	rc = regexec(&s->p2, s->text, 1, &s->m2, REG_STARTEND);
+
+	if (rc == REG_NOMATCH)
 		return 0;
 
-	s->sbeg = &s->text[s->matches[1].rm_so];
-	s->send = &s->text[s->matches[1].rm_eo];
-	s->mlen = s->matches[1].rm_eo - s->matches[1].rm_so;
+	if (rc != 0)
+		print_rex_error(rc, &s->p2);
+
+	s->sbeg = &s->text[s->m1.rm_eo];
+	s->send = &s->text[s->m2.rm_so];
+	s->mlen = s->m2.rm_so - s->m1.rm_eo;
 	*s->send = 0;
 
 	/* skip space at start */
@@ -213,10 +232,11 @@ trscanner_next(struct trscanner *s)
 		p--;
 	}
 
-//	printf("    td:%02x,[%s]\n", s->sbeg[0], s->sbeg);
+	if (debug)
+		fprintf(log, "    td: [%s]\n", s->sbeg);
 
-	s->matches[0].rm_so = s->matches[0].rm_eo;
-	s->matches[0].rm_eo = s->len;
+	s->m1.rm_so = s->m2.rm_eo;
+	s->m1.rm_eo = s->len;
 
 	return 1;
 }
@@ -446,7 +466,6 @@ route_idx(const char *code, const char *route[], size_t n_route)
 	return -1;
 }
 
-
 static void
 departures_print_upcoming(const char* from, const char *dest, const char *route[], size_t n_route)
 {
@@ -512,6 +531,8 @@ int main(int argc, char **argv)
 		switch (ch) {
 			case 'd':
 				debug = 1;
+				log = fopen("departures-debug.log", "wt");
+				fprintf(log, "==================\n\n\n\n\n\n\n");
 				break;
 			case 'l':
 				stations_list();
@@ -544,3 +565,4 @@ int main(int argc, char **argv)
 	curl_global_cleanup();
 	return 0;
 }
+
