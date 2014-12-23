@@ -14,11 +14,11 @@ target_link_libraries(curltest ${curl_LIBRARY})
 add_executable(rextest rextest.c)
 target_link_libraries(rextest)
 
-add_executable(departures departures.c fetch.c stations.c)
+add_executable(departures departures.c stations.c net.c)
 target_link_libraries(departures ${curl_LIBRARY})
 
-add_executable(curlsmtp curlsmtp.c)
-target_link_libraries(curlsmtp ${curl_LIBRARY})
+add_executable(mailto mailto.c net.c)
+target_link_libraries(mailto ${curl_LIBRARY})
 
 add_test(NAME val
 COMMAND valgrind --leak-check=full --show-reachable=no --track-fds=yes --error-exitcode=1

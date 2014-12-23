@@ -15,7 +15,7 @@
 #include <getopt.h>
 #include <inttypes.h>
 
-#include "fetch.h"
+#include "net.h"
 #include "stations.h"
 
 static int debug = 0;		      /* debug parameter */
@@ -360,7 +360,7 @@ departures_fetch(const char *station_code)
 	snprintf(url, 100, api_url, station_code);
 
 	if (expired(fname)) {
-		if (fetch(url, fname) != 0)
+		if (fetch_url(url, fname) != 0)
 			return NULL;
 
 		if (debug)

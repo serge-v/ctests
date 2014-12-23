@@ -13,8 +13,6 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "fetch.h"
-
 static int debug = 1;
 
 static void
