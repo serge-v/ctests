@@ -55,8 +55,40 @@ usage()
 		);
 }
 
-static void
+/* ===== data structures ===================== */
 
+struct departure
+{
+	char		*time;          // departure time
+	char		*destination;   // destination station name
+	char		*line;          // rail line name
+	char		*train;         // train label or number
+	char		*track;         // departure track label or number
+	char		*status;        // status
+	SLIST_ENTRY(departure) entries; // handler for slist
+};
+
+SLIST_HEAD(departures, departure);
+
+struct station
+{
+	const char *code;               // station code
+	const char *name;               // station name
+	struct departures* deps;        // list of departures for this station
+	SLIST_ENTRY(station) entries;   // handler for slist
+};
+
+SLIST_HEAD(stations, station);
+
+struct route
+{
+	const char *name;              // route name
+	struct stations *stations;     // station list for this route
+};
+
+/* =========================================== */
+
+static void
 print_rex_error(int errcode, const regex_t *preg)
 {
 	char buf[1000];
@@ -122,17 +154,6 @@ struct trscanner
 	char            *sbeg;          // td inner text start
 	char            *send;          // td inner text end
 	size_t          mlen;           // td inner text length
-};
-
-struct departure
-{
-	char		*time;          // departure time
-	char		*destination;   // destination station name
-	char		*line;          // rail line name
-	char		*train;         // train label or number
-	char		*track;         // departure track label or number
-	char		*status;        // status
-	SLIST_ENTRY(departure) entries;
 };
 
 #define CEND    "\x1b[0m "
@@ -242,8 +263,6 @@ trscanner_next(struct trscanner *s)
 
 	return 1;
 }
-
-SLIST_HEAD(departures, departure);
 
 static void
 parse_tr(char *text, int len, struct departures *list, struct departure **last_added)
