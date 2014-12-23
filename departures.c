@@ -18,33 +18,35 @@
 #include "net.h"
 #include "stations.h"
 
-static int debug = 0;		      /* debug parameter */
+static int debug = 0;                 /* debug parameter */
 static int debug_server = 0;          /* make requests to debug local server */
 static char *station_from = NULL;     /* departure station */
 static char *station_to = NULL;       /* destination station */
 static FILE* log = NULL;              /* verbose debug log */
+static int email = 0;                 /* send email */
 
 static struct option longopts[] = {
-	{ "list",  no_argument,       NULL, 'l' },
-	{ "from",  required_argument, NULL, 'f' },
-	{ "to",    required_argument, NULL, 't' },
-	{ "debug", no_argument,       NULL, 'd' },
-	{ "help",  no_argument,       NULL, 'h' },
-	{ "debug-server", no_argument, NULL, 's' },
-	{ NULL,    0,                 NULL,  0 }
+	{ "list",         no_argument,       NULL, 'l' },
+	{ "from",         required_argument, NULL, 'f' },
+	{ "to",           required_argument, NULL, 't' },
+	{ "mail",         no_argument,       NULL, 'm' },
+	{ "debug",        no_argument,       NULL, 'd' },
+	{ "help",         no_argument,       NULL, 'h' },
+	{ "debug-server", no_argument,       NULL, 's' },
+	{ NULL,           0,                 NULL,  0  }
 };
 
 static void
 synopsis()
 {
-	printf("Usage: departured [-ldh] [-f STATION_CODE] [-t STATION]\n");
+	printf("Usage: departures [-ldmh] [-f STATION_CODE] [-t STATION]\n");
 }
 
 static void
 usage()
 {
 	printf(
-		"Usage: departured [OPTIONS]\n"
+		"Usage: departures [OPTIONS]\n"
 		"Options:\n"
 		"    --list, -l            List stations\n"
 		"    --from, -f STATION    Get nearest departure and train status\n"
@@ -439,6 +441,10 @@ departures_latest_status(struct departures **dlist, const char **route, size_t n
 	const char *station_code = NULL;
 
 	for (i = 0; i < n; i++) {
+
+		if (dlist[i] == NULL)
+			break;
+
 		SLIST_FOREACH(dep, dlist[i], entries) {
 			if (dep == NULL)
 				break;
@@ -446,11 +452,9 @@ departures_latest_status(struct departures **dlist, const char **route, size_t n
 			if (strcmp(train, dep->train) != 0)
 				continue;
 
-			if (strncmp("in ", dep->status, 3) == 0) {
-				status = dep->status;
-				station_code = route[i];
-				printf("%s at %s\n", status, station_code);
-			}
+			status = dep->status;
+			station_code = route[i];
+			printf("%-20s(%s) - %s\n", station_name(station_code), station_code, status);
 		}
 	}
 }
@@ -478,7 +482,7 @@ departures_print_upcoming(const char* from, const char *dest, const char *route[
 		return;
 	}
 
-	const int MAXPREV = 3 ; // max previous stations
+	const int MAXPREV = 10; // max previous stations
 
 	struct departures **dlist = calloc(MAXPREV, sizeof(struct departures));
 
@@ -495,8 +499,9 @@ departures_print_upcoming(const char* from, const char *dest, const char *route[
 		}
 
 		if (debug) {
+			printf("== Departures for %s(%s) ==\n", station_name(route[idx-i]), route[idx-i]);
 			departures_dump(dlist[i]);
-			printf("Got departures for station %s\n", route[idx-i]);
+			printf("--\n");
 		}
 	}
 
@@ -527,12 +532,15 @@ int main(int argc, char **argv)
 
 	int ch;
 
-	while ((ch = getopt_long(argc, argv, "lhds:f:", longopts, NULL)) != -1) {
+	while ((ch = getopt_long(argc, argv, "lhds:f:t:", longopts, NULL)) != -1) {
 		switch (ch) {
 			case 'd':
 				debug = 1;
 				log = fopen("departures-debug.log", "wt");
 				fprintf(log, "==================\n\n\n\n\n\n\n");
+				break;
+			case 'm':
+				email = 1;
 				break;
 			case 'l':
 				stations_list();
@@ -557,7 +565,7 @@ int main(int argc, char **argv)
 
 	curl_global_init(CURL_GLOBAL_ALL);
 
-	static const char *route[] = { "RM", "TC", "XG", "SF", "TS", "HB" };
+	static const char *route[] = { "PO", "OS", "MD", "CB", "CW", "RM", "TC", "XG", "SF", "TS", "HB" };
 	const size_t N = sizeof(route) / sizeof(route[0]);
 
 	departures_print_upcoming(station_from, station_to, route, N);
