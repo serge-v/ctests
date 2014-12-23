@@ -224,5 +224,7 @@ int send_email_from_me(const char *to, const char *subject, const char *body)
 
 int main(int argc, char **argv)
 {
+	int rc = send_email_from_me("voilokov@gmail.com", "test", "body");
+	printf("sent: %d\n", rc);
 }
 
