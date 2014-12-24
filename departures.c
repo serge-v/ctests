@@ -464,7 +464,7 @@ departures_nearest(struct departures *deps, const char *dest)
 
 static void
 departures_latest_status(struct departures **dlist, const char **route, size_t n,
-			 const char *train, struct buf *b)
+			 size_t curr_idx, const char *train, struct buf *b)
 {
 	struct departure *dep;
 	int i, rc;
@@ -486,8 +486,8 @@ departures_latest_status(struct departures **dlist, const char **route, size_t n
 				continue;
 
 			status = dep->status;
-			station_code = route[i];
-			rc = snprintf(s, sz, "%-30s(%s): %s\n", station_name(station_code), station_code, status);
+			station_code = route[curr_idx-i];
+			rc = snprintf(s, sz, "    %s(%s): %s\n", station_name(station_code), station_code, status);
 			buf_append(b, s, rc);
 		}
 	}
@@ -553,11 +553,11 @@ departures_get_upcoming(const char* from, const char *dest,
 		n = snprintf(s, sz, "Nearest train to %s from %s\n\n", dest_name, from_name);
 		buf_append(b, s, n);
 
-		n = snprintf(s, sz, "%s #%s, Track %s %s\n\n",
+		n = snprintf(s, sz, "%s #%s, Track %s %s, train stops:\n\n",
 			nearest->time, nearest->train, nearest->track, nearest->status);
 		buf_append(b, s, n);
 
-		departures_latest_status(dlist, route, MAXPREV, nearest->train, b);
+		departures_latest_status(dlist, route, MAXPREV, idx, nearest->train, b);
 	} else {
 		n = snprintf(s, sz, "No trains to %s from %s\n", dest_name, from_name);
 		buf_append(b, s, n);
