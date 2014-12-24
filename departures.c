@@ -513,12 +513,21 @@ departures_get_upcoming(const char* from, const char *dest,
 {
 	size_t i;
 	size_t idx = route_idx(from, route, n_route);
-	size_t dest_idx = n_route - 1;
+	size_t final_idx = n_route - 1;
+	size_t dest_idx = -1;
+
 	if (dest != NULL)
 		dest_idx = route_idx(dest, route, n_route);
+	else
+		dest_idx = final_idx;
 
 	if (idx == -1) {
-		printf("Invalid station code\n");
+		fprintf(stderr, "Invalid origin station code\n");
+		return;
+	}
+
+	if (dest_idx == -1) {
+		fprintf(stderr, "Invalid destination station code\n");
 		return;
 	}
 
@@ -545,10 +554,11 @@ departures_get_upcoming(const char* from, const char *dest,
 		}
 	}
 
+	const char *final_name = station_name(route[final_idx]);
 	const char *dest_name = station_name(route[dest_idx]);
 	const char *from_name = station_name(route[idx]);
 
-	struct departure *nearest = departures_nearest(dlist[0], dest_name);
+	struct departure *nearest = departures_nearest(dlist[0], final_name);
 
 	int n;
 	char s[1024];
