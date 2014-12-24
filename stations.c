@@ -3,10 +3,14 @@
 
 #include "stations_defs.c"
 
-const char *credits =
-	"***                                                                     ***\n"
-	"*** Data provided by NJ TRANSIT, which is the sole owner of the Data.   ***\n"
-	"***                                                                     ***\n";
+const char credits[] =
+	"\n"
+	"**********************************\n"
+	"Data provided by NJ TRANSIT, which\n"
+	"is the sole owner of the Data.    \n"
+	"**********************************\n\n";
+
+const size_t sz_credits = sizeof(credits);
 
 void
 stations_list()

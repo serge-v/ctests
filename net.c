@@ -8,22 +8,14 @@
 
 /* ========= send_email using curl ========= */
 
-struct buf
-{
-	char *s;
-	size_t len;
-	size_t cap;
-};
-
-static void
+void
 buf_append(struct buf *b, const char *s, size_t n)
 {
-	if (b->s == NULL) {
-		b->s = malloc(1024);
-	} else 	if (b->len + n > b->cap) {
+	if (b->len + n > b->cap) {
 		b->cap = (b->len + n) * 2;
 		b->s = realloc(b->s, b->cap);
 	}
+
 	strncat(b->s, s, n);
 	b->len += n;
 }

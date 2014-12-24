@@ -463,10 +463,13 @@ departures_nearest(struct departures *deps, const char *dest)
 }
 
 static void
-departures_latest_status(struct departures **dlist, const char **route, size_t n, const char *train)
+departures_latest_status(struct departures **dlist, const char **route, size_t n,
+			 const char *train, struct buf *b)
 {
 	struct departure *dep;
-	int i;
+	int i, rc;
+	char s[1024];
+	size_t sz = sizeof(s);
 	const char *status = NULL;
 	const char *station_code = NULL;
 
@@ -484,7 +487,8 @@ departures_latest_status(struct departures **dlist, const char **route, size_t n
 
 			status = dep->status;
 			station_code = route[i];
-			printf("%-20s(%s) - %s\n", station_name(station_code), station_code, status);
+			rc = snprintf(s, sz, "%-30s(%s): %s\n", station_name(station_code), station_code, status);
+			buf_append(b, s, rc);
 		}
 	}
 }
@@ -501,7 +505,8 @@ route_idx(const char *code, const char *route[], size_t n_route)
 }
 
 static void
-departures_print_upcoming(const char* from, const char *dest, const char *route[], size_t n_route)
+departures_get_upcoming(const char* from, const char *dest,
+			  const char *route[], size_t n_route, struct buf *b)
 {
 	size_t i;
 	size_t idx = route_idx(from, route, n_route);
@@ -540,14 +545,25 @@ departures_print_upcoming(const char* from, const char *dest, const char *route[
 
 	struct departure *nearest = departures_nearest(dlist[0], dest_name);
 
+	int n;
+	char s[1024];
+	size_t sz = sizeof(s);
+
 	if (nearest != NULL) {
-		printf("Nearest train to %s from %s\n", dest_name, from_name);
-		printf("%s #%s, Track %s %s\n",
+		n = snprintf(s, sz, "Nearest train to %s from %s\n\n", dest_name, from_name);
+		buf_append(b, s, n);
+
+		n = snprintf(s, sz, "%s #%s, Track %s %s\n\n",
 			nearest->time, nearest->train, nearest->track, nearest->status);
-		departures_latest_status(dlist, route, MAXPREV, nearest->train);
+		buf_append(b, s, n);
+
+		departures_latest_status(dlist, route, MAXPREV, nearest->train, b);
 	} else {
-		printf("No trains to %s from %s\n", dest_name, from_name);
+		n = snprintf(s, sz, "No trains to %s from %s\n", dest_name, from_name);
+		buf_append(b, s, n);
 	}
+
+	buf_append(b, credits, sz_credits);
 
 	for (i = 0; i < MAXPREV; i++)
 		departures_destroy(dlist[i]);
@@ -562,11 +578,11 @@ int main(int argc, char **argv)
 
 	int ch;
 
-	while ((ch = getopt_long(argc, argv, "lhds:f:t:", longopts, NULL)) != -1) {
+	while ((ch = getopt_long(argc, argv, "lhds:f:t:m", longopts, NULL)) != -1) {
 		switch (ch) {
 			case 'd':
 				debug = 1;
-				log = fopen("departures-debug.log", "wt");
+				log = fopen("/tmp/departures-debug.log", "wt");
 				fprintf(log, "==================\n\n\n\n\n\n\n");
 				break;
 			case 'm':
@@ -598,7 +614,26 @@ int main(int argc, char **argv)
 	static const char *route[] = { "PO", "OS", "MD", "CB", "CW", "RM", "TC", "XG", "SF", "TS", "HB" };
 	const size_t N = sizeof(route) / sizeof(route[0]);
 
-	departures_print_upcoming(station_from, station_to, route, N);
+	struct buf b;
+	memset(&b, 0, sizeof(struct buf));
+
+	departures_get_upcoming(station_from, station_to, route, N, &b);
+
+	printf("%s", b.s);
+
+	if (email) {
+		struct message m = {
+			.from = "serge0x76@gmail.com",
+			.to = "voilokov@gmail.com",
+			.subject = "train to Hoboken",
+			.body = b.s,
+		};
+
+		int rc = send_email(&m);
+
+		if (rc != 0)
+			return 1;
+	}
 
 	curl_global_cleanup();
 	return 0;

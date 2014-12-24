@@ -1,3 +1,12 @@
+struct buf
+{
+	char *s;
+	size_t len;
+	size_t cap;
+};
+
+void buf_append(struct buf *b, const char *s, size_t n);
+
 struct message
 {
 	const char *to;        /* recipient */

@@ -14,7 +14,7 @@ int main(int argc, char **argv)
 	}
 
 	struct message m = {
-		.from = "Serge Voilokov <serge0x76@gmail.com>",
+		.from = "serge0x76@gmail.com",
 		.to = argv[1],
 		.subject = argv[2],
 		.body = argv[3]
