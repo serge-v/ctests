@@ -16,8 +16,9 @@ buf_append(struct buf *b, const char *s, size_t n)
 		b->s = realloc(b->s, b->cap);
 	}
 
-	strncat(b->s, s, n);
+	memcpy(b->s + b->len, s, n);
 	b->len += n;
+	b->s[b->len] = 0;
 }
 
 static int
