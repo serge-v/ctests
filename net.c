@@ -106,7 +106,7 @@ struct smtp_info
 {
 	const char *server;            /* smtp server */
 	const char *user;              /* smtp user */
-	const char *pin_password;      /* pinentry path to smtp password item */
+	const char *password_file;     /* file with password */
 	int debug;                     /* using local server without credentials */
 };
 
@@ -137,11 +137,9 @@ curl_smtp_send(const struct smtp_info *s, const struct message *m)
 		return 1;
 	}
 
-	char pincmd[100];
-	snprintf(pincmd, 100, "pass %s", s->pin_password);
-	FILE *f = popen(pincmd, "r");
+	FILE *f = fopen(s->password_file, "rt");
 	if (f == NULL) {
-		fprintf(stderr, "Cannot read password using %s", pincmd);
+		fprintf(stderr, "Cannot read password from %s\n", s->password_file);
 		return 1;
 	}
 
@@ -158,7 +156,7 @@ curl_smtp_send(const struct smtp_info *s, const struct message *m)
 	}
 
 	if (n != 16) {
-		fprintf(stderr, "Invalid gmail app password for pin %s\n", s->pin_password);
+		fprintf(stderr, "Invalid gmail app password for pin %s\n", s->password_file);
 		return 1;
 	}
 
@@ -194,10 +192,13 @@ curl_smtp_send(const struct smtp_info *s, const struct message *m)
 int
 send_email(const struct message *m)
 {
+	char fname[PATH_MAX];
+	snprintf(fname, PATH_MAX, "%s/.config/departures/smtp.txt", getenv("HOME"));
+
 	struct smtp_info gmail = {
 		.server = "smtp://smtp.gmail.com:587",
 		.user = "serge0x76@gmail.com",
-		.pin_password = "curlsmtp",
+		.password_file = fname,
 		.debug = 0
 	};
 

@@ -12,7 +12,3 @@
 	echo '"";'
 ) > version.c
 
-cat version.h
-cat version.c
-
-
