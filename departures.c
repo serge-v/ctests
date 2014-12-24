@@ -514,6 +514,8 @@ departures_get_upcoming(const char* from, const char *dest,
 	size_t i;
 	size_t idx = route_idx(from, route, n_route);
 	size_t dest_idx = n_route - 1;
+	if (dest != NULL)
+		dest_idx = route_idx(dest, route, n_route);
 
 	if (idx == -1) {
 		printf("Invalid station code\n");
@@ -553,16 +555,16 @@ departures_get_upcoming(const char* from, const char *dest,
 	size_t sz = sizeof(s);
 
 	if (nearest != NULL) {
-		n = snprintf(s, sz, "Nearest train to %s from %s\n\n", dest_name, from_name);
+		n = snprintf(s, sz, "Next train from %s to %s\n\n", from_name, dest_name);
 		buf_append(b, s, n);
 
-		n = snprintf(s, sz, "%s #%s, Track %s %s, train stops:\n\n",
+		n = snprintf(s, sz, "%s #%s, Track %s %s. Train status:\n\n",
 			nearest->time, nearest->train, nearest->track, nearest->status);
 		buf_append(b, s, n);
 
 		departures_latest_status(dlist, route, MAXPREV, idx, nearest->train, b);
 	} else {
-		n = snprintf(s, sz, "No trains to %s from %s\n", dest_name, from_name);
+		n = snprintf(s, sz, "No trains from %s to %s\n", from_name, dest_name);
 		buf_append(b, s, n);
 	}
 
@@ -621,8 +623,26 @@ int main(int argc, char **argv)
 
 	curl_global_init(CURL_GLOBAL_ALL);
 
-	static const char *route[] = { "PO", "OS", "MD", "CB", "CW", "RM", "TC", "XG", "SF", "TS", "HB" };
-	const size_t N = sizeof(route) / sizeof(route[0]);
+	/* Port Jervis to Hoboken route */
+	static const char *pohb_route[] = { "PO", "OS", "MD", "CB", "CW", "RM", "TC", "XG", "SF", "TS", "HB" };
+
+	/* Hoboken to Port Jervis route */
+	static const char *hbpo_route[] = { "HB", "TS", "SF", "XG", "TC", "RM", "CW", "CB", "MD", "OS", "PO" };
+
+	const size_t N = sizeof(pohb_route) / sizeof(pohb_route[0]);
+
+	/* detect whether inbound or outbound route to use */
+
+	if (station_to == NULL)
+		station_to = "HB";
+
+	static const char **route = pohb_route;
+
+	size_t idx_to = route_idx(station_to, route, N);
+	size_t idx_from = route_idx(station_from, route, N);
+
+	if (idx_to < idx_from)
+		route = hbpo_route;
 
 	struct buf b;
 	memset(&b, 0, sizeof(struct buf));
