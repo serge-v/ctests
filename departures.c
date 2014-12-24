@@ -39,19 +39,20 @@ static struct option longopts[] = {
 static void
 synopsis()
 {
-	printf("Usage: departures [-ldmh] [-f STATION_CODE] [-t STATION]\n");
+	printf("usage: departures [-ldmh] [-f station] [-t station]\n");
 }
 
 static void
 usage()
 {
 	printf(
-		"Usage: departures [OPTIONS]\n"
-		"Options:\n"
-		"    --list, -l            List stations\n"
-		"    --from, -f STATION    Get nearest departure and train status\n"
-		"    --to, -t STATION      Set destination station\n"
-		"    --debug, -d           Output debug information\n"
+		"usage: departures [-ldmh] [-f station] [-t station]\n"
+		"options:\n"
+		"    -l, --list            list stations\n"
+		"    -f, --from=STATION    get nearest departure and train status\n"
+		"    -t, --to=STATION      set destination station\n"
+		"    -m, --mail            send email with nearest departure\n"
+		"    -d, --debug           output debug information\n"
 		);
 }
 
@@ -106,22 +107,19 @@ read_text(const char *fname, char **text, size_t *len)
 	char *buff = NULL;
 	int ret = -1;
 
-	if (stat(fname, &st) != 0)
-	{
+	if (stat(fname, &st) != 0) {
 		printf("Cannot stat file %s. Error: %d\n", fname, errno);
 		goto out;
 	}
 
 	f = fopen(fname, "rt");
-	if (!f)
-	{
+	if (f == NULL) {
 		printf("Cannot open file %s. Error: %d\n", fname, errno);
 		goto out;
 	}
 
 	buff = malloc(st.st_size + 1);
-	if (!buff)
-	{
+	if (buff == NULL) {
 		printf("Cannot allocate %" PRId64 " bytes. Error: %d\n", st.st_size + 1, errno);
 		goto out;
 	}
@@ -135,13 +133,11 @@ read_text(const char *fname, char **text, size_t *len)
 	ret = 0;
 
 out:
-	if (f)
+	if (f != NULL)
 		fclose(f);
 
 	return ret;
 }
-
-#define TRGROUPS 2
 
 struct trscanner
 {
@@ -183,7 +179,7 @@ trscanner_create(struct trscanner *s, char *text, int len)
 	memset(s, 0, sizeof(struct trscanner));
 
 	if (debug)
-		fprintf(log, "scan tr: %.*s\n", len, text);
+		fprintf(log, "extract tds from: %.*s\n", len, text);
 
 	rc = regcomp(&s->p1, "<td[^>]*>", REG_EXTENDED);
 	if (rc != 0)
@@ -267,6 +263,9 @@ trscanner_next(struct trscanner *s)
 static void
 parse_tr(char *text, int len, struct departures *list, struct departure **last_added)
 {
+	if (strstr(text, "<td colspan=") != NULL)
+		return;
+
 	struct trscanner scan;
 	struct departure *dep;
 
@@ -287,19 +286,19 @@ parse_tr(char *text, int len, struct departures *list, struct departure **last_a
 	}
 
 	if (!trscanner_next(&scan))
-		errx(1, "no track found");
+		errx(1, "Cannot parse track");
 
 	dep->track = scan.sbeg; // 3
 	if (strcmp("Single", dep->track) == 0)
 		strcpy(dep->track, "1");
 
 	if (!trscanner_next(&scan))
-		errx(1, "no line found");
+		errx(1, "Cannot parse line");
 
 	dep->line = scan.sbeg; // 4
 
 	if (!trscanner_next(&scan))
-		errx(1, "no train found");
+		errx(1, "Cannot parse train");
 
 	dep->train = scan.sbeg; // 5
 
@@ -321,7 +320,8 @@ static struct departures *
 departures_parse(const char *fname)
 {
 	int rc;
-	regex_t preg;
+	regex_t p1, p2;
+	regmatch_t m1, m2;
 	char *text;
 	size_t len;
 	struct departure *last_added = NULL;
@@ -333,35 +333,46 @@ departures_parse(const char *fname)
 	if (rc != 0)
 		err(rc, "cannot read file");
 
-	rc = regcomp(&preg, "<tr[ *](.*)</tr>", REG_EXTENDED | REG_ENHANCED | REG_MINIMAL);
+	rc = regcomp(&p1, "<tr[^>]*>", REG_EXTENDED);
 	if (rc != 0)
-		print_rex_error(rc, &preg);
+		print_rex_error(rc, &p1);
 
-	regmatch_t matches[TRGROUPS];
+	rc = regcomp(&p2, "</tr>", REG_EXTENDED);
+	if (rc != 0)
+		print_rex_error(rc, &p2);
 
-	matches[0].rm_so = 0;
-	matches[0].rm_eo = len;
+	m1.rm_so = 0;
+	m1.rm_eo = len;
 
-	while (matches[0].rm_so >= 0)
+	for (;;)
 	{
-		rc = regexec(&preg, text, TRGROUPS, matches, REG_STARTEND);
+		rc = regexec(&p1, text, 1, &m1, REG_STARTEND);
 
 		if (rc == REG_NOMATCH)
 			break;
 
 		if (rc != 0)
-			print_rex_error(rc, &preg);
+			print_rex_error(rc, &p1);
 
-		if (matches[0].rm_so == -1)
+		m2.rm_so = m1.rm_eo;
+		m2.rm_eo = len;
+
+		rc = regexec(&p2, text, 1, &m2, REG_STARTEND);
+
+		if (rc == REG_NOMATCH)
 			break;
 
-		parse_tr(&text[matches[1].rm_so], matches[1].rm_eo - matches[1].rm_so, dlist, &last_added);
+		if (rc != 0)
+			print_rex_error(rc, &p2);
 
-		matches[0].rm_so = matches[0].rm_eo;
-		matches[0].rm_eo = len;
+		parse_tr(&text[m1.rm_eo], m2.rm_so - m1.rm_eo, dlist, &last_added);
+
+		m1.rm_so = m2.rm_eo;
+		m1.rm_eo = len;
 	}
 
-	regfree(&preg);
+	regfree(&p1);
+	regfree(&p2);
 
 	return dlist;
 }
