@@ -14,9 +14,9 @@ target_link_libraries(curltest ${curl_LIBRARY})
 add_executable(rextest rextest.c)
 target_link_libraries(rextest)
 
-add_custom_command(OUTPUT "version.c"
+add_custom_command(OUTPUT "version.c" "version.h"
 	COMMAND ./genversion.sh
-	DEPENDS *.c *.h)
+	DEPENDS [!v][!e][!r]*.c [!v][!e][!r]*.h)
 
 add_executable(departures departures.c stations.c net.c version.c)
 target_link_libraries(departures ${curl_LIBRARY})
