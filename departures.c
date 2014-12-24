@@ -17,6 +17,7 @@
 
 #include "net.h"
 #include "stations.h"
+#include "version.h"
 
 static int debug = 0;                 /* debug parameter */
 static int debug_server = 0;          /* make requests to debug local server */
@@ -33,26 +34,28 @@ static struct option longopts[] = {
 	{ "debug",        no_argument,       NULL, 'd' },
 	{ "help",         no_argument,       NULL, 'h' },
 	{ "debug-server", no_argument,       NULL, 's' },
+	{ "version",      no_argument,       NULL, 'v' },
 	{ NULL,           0,                 NULL,  0  }
 };
 
 static void
 synopsis()
 {
-	printf("usage: departures [-ldmh] [-f station] [-t station]\n");
+	printf("usage: departures [-ldmhv] [-f station] [-t station]\n");
 }
 
 static void
 usage()
 {
 	printf(
-		"usage: departures [-ldmh] [-f station] [-t station]\n"
+		"usage: departures [-ldmhv] [-f station] [-t station]\n"
 		"options:\n"
 		"    -l, --list            list stations\n"
 		"    -f, --from=STATION    get nearest departure and train status\n"
 		"    -t, --to=STATION      set destination station\n"
 		"    -m, --mail            send email with nearest departure\n"
 		"    -d, --debug           output debug information\n"
+		"    -v, --version         print version\n"
 		);
 }
 
@@ -578,7 +581,7 @@ int main(int argc, char **argv)
 
 	int ch;
 
-	while ((ch = getopt_long(argc, argv, "lhds:f:t:m", longopts, NULL)) != -1) {
+	while ((ch = getopt_long(argc, argv, "lhds:f:t:mv", longopts, NULL)) != -1) {
 		switch (ch) {
 			case 'd':
 				debug = 1;
@@ -599,6 +602,13 @@ int main(int argc, char **argv)
 				break;
 			case 'h':
 				usage();
+				return 1;
+			case 'v':
+				printf("departures\n");
+				printf("version %s\n", app_version);
+				printf("date %s\n", app_date);
+				if (strlen(app_diff) > 0)
+					printf("uncommited changes:\n%s\n", app_diff);
 				return 1;
 			default:
 				synopsis();

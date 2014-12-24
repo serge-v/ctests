@@ -69,4 +69,6 @@ Debug/
 Project.build/
 Project.xcodeproj/
 *.cmake
+version.h
+version.c
 
