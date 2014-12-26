@@ -1,7 +1,0 @@
-To generate configure script run:
-autoreconf -i
-
-Then run:
-./configure CFLAGS=-g3 LDFLAGS=-g3
-make
-

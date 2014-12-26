@@ -8,7 +8,7 @@
 	echo 'const char app_version[] = "'`git describe --tags --long`'";'
 	echo 'const char app_date[] = "'`git log -n 1 --format=%ai`'";'
 	echo 'const char app_diff[] = ""'
-	git diff -U0 |sed 's/\\n/\\\\n/g; s/\"/\\"/g; s/^/\"/; s/$/\\n"/'
+	git diff -U0 |sed 's/\\/\\\\/g; s/\\n/\\\\n/g; s/\"/\\"/g; s/^/\"/; s/$/\\n"/'
 	echo '"";'
 ) > version.c
 

@@ -15,7 +15,7 @@
 #include <getopt.h>
 #include <inttypes.h>
 
-#include "net.h"
+#include "../common/net.h"
 #include "stations.h"
 #include "version.h"
 

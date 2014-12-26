@@ -14,14 +14,7 @@ target_link_libraries(curltest ${curl_LIBRARY})
 add_executable(rextest rextest.c)
 target_link_libraries(rextest)
 
-add_custom_command(OUTPUT "version.c" "version.h"
-	COMMAND ./genversion.sh
-	DEPENDS [!v][!e][!r]*.c [!v][!e][!r]*.h)
-
-add_executable(departures departures.c stations.c net.c version.c)
-target_link_libraries(departures ${curl_LIBRARY})
-
-add_executable(mailto mailto.c net.c)
+add_executable(mailto mailto.c common/net.c)
 target_link_libraries(mailto ${curl_LIBRARY})
 
 add_custom_target(run
@@ -30,8 +23,5 @@ DEPENDS rextest
 WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 
-add_test(NAME val
-COMMAND valgrind --leak-check=full --show-reachable=no --track-fds=yes --error-exitcode=1
-${CMAKE_CURRENT_BINARY_DIR}/departures
-WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+add_subdirectory("departures")
 
