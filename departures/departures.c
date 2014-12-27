@@ -23,14 +23,18 @@ static int debug = 0;                 /* debug parameter */
 static int debug_server = 0;          /* make requests to debug local server */
 static char *station_from = NULL;     /* departure station */
 static char *station_to = NULL;       /* destination station */
-static FILE* log = NULL;              /* verbose debug log */
+static FILE *log = NULL;              /* verbose debug log */
 static int email = 0;                 /* send email */
+static int all = 0;                   /* show all trains for station */
+static char *train = NULL;            /* train code */
 
 static struct option longopts[] = {
 	{ "list",         no_argument,       NULL, 'l' },
 	{ "from",         required_argument, NULL, 'f' },
 	{ "to",           required_argument, NULL, 't' },
 	{ "mail",         no_argument,       NULL, 'm' },
+	{ "all",          no_argument,       NULL, 'a' },
+	{ "stops",        no_argument,       NULL, 'p' },
 	{ "debug",        no_argument,       NULL, 'd' },
 	{ "help",         no_argument,       NULL, 'h' },
 	{ "debug-server", no_argument,       NULL, 's' },
@@ -41,18 +45,21 @@ static struct option longopts[] = {
 static void
 synopsis()
 {
-	printf("usage: departures [-ldmhv] [-f station] [-t station]\n");
+	printf("usage: departures [-ldmhvap] [-f station] [-t station] [-p train]\n");
 }
 
 static void
 usage()
 {
+	synopsis();
+
 	printf(
-		"usage: departures [-ldmhv] [-f station] [-t station]\n"
 		"options:\n"
 		"    -l, --list            list stations\n"
-		"    -f, --from=STATION    get nearest departure and train status\n"
-		"    -t, --to=STATION      set destination station\n"
+		"    -f, --from=station    get next departure and train status\n"
+		"    -t, --to=station      set destination station\n"
+		"    -a, --all             get all departures for station\n"
+		"    -p, --stops=train     get stops for train"
 		"    -m, --mail            send email with nearest departure\n"
 		"    -d, --debug           output debug information\n"
 		"    -v, --version         print version\n"
@@ -507,7 +514,7 @@ route_idx(const char *code, const char *route[], size_t n_route)
 	return -1;
 }
 
-static void
+static int
 departures_get_upcoming(const char* from, const char *dest,
 			  const char *route[], size_t n_route, struct buf *b)
 {
@@ -523,12 +530,12 @@ departures_get_upcoming(const char* from, const char *dest,
 
 	if (idx == -1) {
 		fprintf(stderr, "Invalid origin station code\n");
-		return;
+		return 1;
 	}
 
 	if (dest_idx == -1) {
 		fprintf(stderr, "Invalid destination station code\n");
-		return;
+		return 1;
 	}
 
 	const int MAXPREV = 10; // max previous stations
@@ -544,7 +551,7 @@ departures_get_upcoming(const char* from, const char *dest,
 
 		if (dlist[i] == NULL) {
 			fprintf(stderr, "Cannot get departures for station code %s\n", route[idx-i]);
-			return;
+			return 1;
 		}
 
 		if (debug) {
@@ -582,6 +589,8 @@ departures_get_upcoming(const char* from, const char *dest,
 
 	for (i = 0; i < MAXPREV; i++)
 		departures_destroy(dlist[i]);
+
+	return 0;
 }
 
 int main(int argc, char **argv)
@@ -593,7 +602,7 @@ int main(int argc, char **argv)
 
 	int ch;
 
-	while ((ch = getopt_long(argc, argv, "lhds:f:t:mv", longopts, NULL)) != -1) {
+	while ((ch = getopt_long(argc, argv, "lhds:f:t:mvap:", longopts, NULL)) != -1) {
 		switch (ch) {
 			case 'd':
 				debug = 1;
@@ -602,6 +611,9 @@ int main(int argc, char **argv)
 				break;
 			case 'm':
 				email = 1;
+				break;
+			case 'a':
+				all = 1;
 				break;
 			case 'l':
 				stations_list();
@@ -657,22 +669,22 @@ int main(int argc, char **argv)
 	struct buf b;
 	memset(&b, 0, sizeof(struct buf));
 
-	departures_get_upcoming(station_from, station_to, route, N, &b);
+	if (departures_get_upcoming(station_from, station_to, route, N, &b) == 0) {
+		printf("%s", b.s);
 
-	printf("%s", b.s);
+		if (email) {
+			struct message m = {
+				.from = "serge0x76@gmail.com",
+				.to = "voilokov@gmail.com",
+				.subject = "train to Hoboken",
+				.body = b.s,
+			};
 
-	if (email) {
-		struct message m = {
-			.from = "serge0x76@gmail.com",
-			.to = "voilokov@gmail.com",
-			.subject = "train to Hoboken",
-			.body = b.s,
-		};
+			int rc = send_email(&m);
 
-		int rc = send_email(&m);
-
-		if (rc != 0)
-			return 1;
+			if (rc != 0)
+				return 1;
+		}
 	}
 
 	curl_global_cleanup();

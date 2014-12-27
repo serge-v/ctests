@@ -18,7 +18,14 @@ elif [ x$1 == "x-t" ]; then
 		/usr/local/bin/departures -f XG -m"
 elif [ x$1 == "x-b" ]; then
 	ssh $host "
-		cd ~/src/xtree/ctests
+		if [ ! -d ~/src/xtree ]; then
+			mkdir -p ~/src/xtree
+			cd ~/src/xtree
+			git clone https://github.com/serge-v/ctests
+			cd ctests
+		fi
+		cd ~/src/xtree/ctests/departures
+		cmake .
 		echo == executing buld on host: \$HOSTNAME ==
 		git pull
 		make clean
