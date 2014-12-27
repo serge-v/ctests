@@ -59,7 +59,7 @@ usage()
 		"    -f, --from=station    get next departure and train status\n"
 		"    -t, --to=station      set destination station\n"
 		"    -a, --all             get all departures for station\n"
-		"    -p, --stops=train     get stops for train"
+		"    -p, --stops=train     get stops for train\n"
 		"    -m, --mail            send email with nearest departure\n"
 		"    -d, --debug           output debug information\n"
 		"    -v, --version         print version\n"
@@ -580,6 +580,11 @@ departures_get_upcoming(const char* from, const char *dest,
 		buf_append(b, s, n);
 
 		departures_latest_status(dlist, route, MAXPREV, idx, nearest->train, b);
+
+		if (all) {
+			departures_dump(dlist[0]);
+			printf("\n");
+		}
 	} else {
 		n = snprintf(s, sz, "No trains from %s to %s\n", from_name, dest_name);
 		buf_append(b, s, n);
@@ -620,6 +625,9 @@ int main(int argc, char **argv)
 				return 0;
 			case 'f':
 				station_from = optarg;
+				break;
+			case 'p':
+				train = optarg;
 				break;
 			case 't':
 				station_to = optarg;
