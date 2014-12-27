@@ -3,7 +3,7 @@ host=`cat ~/.config/departures/host.txt`
 if [ x$1 == "x-l" ]; then
 	ssh -t $host "
 		echo == executing install on host: \$HOSTNAME ==
-		sudo cp ~/src/xtree/ctests/departures /usr/local/bin/
+		sudo cp ~/src/xtree/ctests/departures/departures /usr/local/bin/
 		/usr/local/bin/departures -v"
 elif [ x$1 == "x-i" ]; then
 	ssh -t $host "
