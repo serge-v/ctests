@@ -164,9 +164,10 @@ static const char *stations[] = {
 	"Woodbridge",
 	"Woodcliff Lake",
 	"Secaucus Lower",
+	"Hoboken (SEC)",
 };
 
-static const size_t n_stations = 165;
+static const size_t n_stations = 166;
 
 static const char *codes[] = {
 	"AM",
@@ -334,7 +335,8 @@ static const char *codes[] = {
 	"WB",
 	"WL",
 	"TS",
+	"HB", /* for Hoboken with suffix (SEC) */
 };
 
-static const size_t n_codes = 165;
+static const size_t n_codes = 166;
 

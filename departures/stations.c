@@ -44,3 +44,29 @@ station_name(const char *code)
 	return NULL;
 }
 
+const char *
+station_code(const char *name)
+{
+	int i;
+	for (i = 0; i < n_stations; i++) {
+		if (strcmp(name, stations[i]) == 0)
+			return codes[i];
+	}
+	return NULL;
+}
+
+const char *
+station_verify_code(const char *code)
+{
+	if (code == NULL)
+		return NULL;
+
+	int i;
+	for (i = 0; i < n_stations; i++) {
+		if (strcmp(code, codes[i]) == 0)
+			return codes[i];
+	}
+	return NULL;
+}
+
+
