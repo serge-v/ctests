@@ -70,4 +70,5 @@ Project.xcodeproj/
 *.cmake
 version.h
 version.c
+nj*.html
 

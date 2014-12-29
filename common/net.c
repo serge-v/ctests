@@ -347,4 +347,62 @@ out:
 	return rc;
 }
 
+static int
+curl_post(const char *url, const char *post_data, struct response *resp)
+{
+	CURL *curl;
+	struct curl_slist *chunk = NULL;
+
+	curl = curl_easy_init();
+
+	curl_easy_setopt(curl, CURLOPT_URL, url);
+
+	chunk = curl_slist_append(chunk,
+	    "Content-Type: text/xml,charset=utf-8");
+
+	chunk = curl_slist_append(chunk,
+	    "SOAPAction: \"http://www.altoromutual.com/bank/ws/GetUserAccounts\"");
+
+	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
+	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post_data);
+	curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
+	curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, header_callback);
+	curl_easy_setopt(curl, CURLOPT_HEADERDATA, resp);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, resp);
+	CURLcode err = curl_easy_perform(curl);
+	resp->error = err;
+
+	curl_easy_cleanup(curl);
+
+	return err;
+}
+
+int
+post_url(const char *url, const char *post_data, const char *fname)
+{
+	int rc;
+	struct response resp;
+
+	memset(&resp, 0, sizeof(struct response));
+	resp.fname = fname;
+
+	rc = curl_post(url, post_data, &resp);
+
+	if (rc != 0) {
+		fprintf(stderr, "Cannot post to url %s. Curl error %d : %s\n",
+			url, resp.error, curl_easy_strerror(resp.error));
+		goto out;
+	}
+
+	if (resp.code != 200) {
+		fprintf(stderr, "Cannot post to url %s. HTTP error %d\n", url, resp.code);
+		rc = resp.code;
+		goto out;
+	}
+out:
+	response_destroy(&resp);
+	return rc;
+}
+
 

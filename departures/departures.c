@@ -62,6 +62,7 @@ usage()
 		"    -p, --stops=train     get stops for train\n"
 		"    -m, --mail            send email with nearest departure\n"
 		"    -d, --debug           output debug information\n"
+		"    -s, --debug-server    use debug server\n"
 		"    -v, --version         print version\n"
 		);
 }
@@ -80,28 +81,28 @@ struct departure
 	SLIST_ENTRY(departure) entries; /* handler for slist */
 };
 
-SLIST_HEAD(deplist, departure);
+SLIST_HEAD(departure_list, departure);
 
 struct departures
 {
-	struct deplist *list;          /* departures list */
+	struct departure_list *list;   /* departures list */
 	size_t size;                   /* departures list size */
 };
 
 struct station
 {
-	char *code;               /* station code */
-	char *name;               /* station name */
+	char *code;                     /* station code */
+	char *name;                     /* station name */
 	struct departures* deps;        /* list of departures for this station */
 	SLIST_ENTRY(station) entries;   /* handler for slist */
 };
 
-SLIST_HEAD(stations, station);
+SLIST_HEAD(station_list, station);
 
 struct route
 {
-	const char *name;              // route name
-	struct stations *stations;     // station list for this route
+	const char *name;                  /* route name */
+	struct station_list *stations;     /* station list for this route */
 };
 
 /* =========================================== */
@@ -352,7 +353,7 @@ station_load(struct station* st, const char *fname)
 	if (st->deps == NULL)
 		err(1, "Cannot allocate deps");
 
-	st->deps->list = calloc(1, sizeof(struct deplist));
+	st->deps->list = calloc(1, sizeof(struct departure_list));
 	SLIST_INIT(st->deps->list);
 
 	rc = read_text(fname, &text, &len);
@@ -443,7 +444,7 @@ station_create(const char *station_code)
 
 	if (expired(fname)) {
 		if (fetch_url(url, fname) != 0)
-			return NULL;
+			err(1, "Cannot fetch departures for station");
 
 		if (debug)
 			printf("%s fetched\n", fname);
@@ -600,18 +601,166 @@ propose_destinations(struct station *st, const char *to)
 	return NULL;
 }
 
-static size_t
-get_prev_stations(const char *from_code, const char *train, const char* route[], size_t n_route)
+static void
+parse_par(char *text, size_t len, char **stop_name, char **stop_status)
 {
-	const char *api_url = "http://dv.njtransit.com/mobile/train_stops.aspx?sid=%s&train=%s";
+	regex_t p1, p2;
+	regmatch_t m1, m2;
+
+	int rc = regcomp(&p1, "<p[^>]*>", REG_EXTENDED);
+	if (rc != 0)
+		print_rex_error(rc, &p1);
+
+	rc = regcomp(&p2, "</p>", REG_EXTENDED);
+	if (rc != 0)
+		print_rex_error(rc, &p2);
+
+	m1.rm_so = 0;
+	m1.rm_eo = len;
+
+	rc = regexec(&p1, text, 1, &m1, REG_STARTEND);
+
+	if (rc == REG_NOMATCH)
+		return;
+
+	if (rc != 0)
+		print_rex_error(rc, &p1);
+
+	m2.rm_so = m1.rm_eo;
+	m2.rm_eo = len;
+
+	rc = regexec(&p2, text, 1, &m2, REG_STARTEND);
+
+	if (rc == REG_NOMATCH)
+		return;
+
+	if (rc != 0)
+		print_rex_error(rc, &p2);
+
+
+	size_t plen = m2.rm_so - m1.rm_eo;
+	char* ptext = &text[m1.rm_eo];
+	if (debug)
+		fprintf(log, "  p raw: %.*s\n", (int)plen, ptext);
+	char *p = strstr(ptext, "&nbsp;&nbsp;");
+	if (p != NULL)
+		memset(p, 0, 12);
+
+	*stop_name = ptext;
+	*stop_status = p + 12;
+	text[m2.rm_so] = 0;
+
+	if (debug)
+		fprintf(log, "stop_name: %s, stop_status: %s\n", *stop_name, *stop_status);
+}
+
+struct stop
+{
+	char *name;
+	const char *code;
+	char *status;
+	SLIST_ENTRY(stop) entries;
+};
+
+SLIST_HEAD(stop_list, stop);
+
+static void
+parse_train_stops(const char *fname, struct stop_list* list)
+{
+	int rc;
+	regex_t p1, p2;
+	regmatch_t m1, m2;
+	char *text;
+	size_t len;
+
+	rc = read_text(fname, &text, &len);
+	if (rc != 0)
+		err(rc, "cannot read file");
+
+	rc = regcomp(&p1, "<tr[^>]*>", REG_EXTENDED);
+	if (rc != 0)
+		print_rex_error(rc, &p1);
+
+	rc = regcomp(&p2, "</tr>", REG_EXTENDED);
+	if (rc != 0)
+		print_rex_error(rc, &p2);
+
+	m1.rm_so = 0;
+	m1.rm_eo = len;
+
+	struct stop *last = NULL;
+
+	for (;;)
+	{
+		rc = regexec(&p1, text, 1, &m1, REG_STARTEND);
+
+		if (rc == REG_NOMATCH)
+			break;
+
+		if (rc != 0)
+			print_rex_error(rc, &p1);
+
+		m2.rm_so = m1.rm_eo;
+		m2.rm_eo = len;
+
+		rc = regexec(&p2, text, 1, &m2, REG_STARTEND);
+
+		if (rc == REG_NOMATCH)
+			break;
+
+		if (rc != 0)
+			print_rex_error(rc, &p2);
+
+
+		size_t tdlen = m2.rm_so - m1.rm_eo;
+		if (debug)
+			fprintf(log, "tr: %.*s\n", (int)tdlen, &text[m1.rm_eo]);
+
+		char *name = NULL;
+		char *status = NULL;
+
+		parse_par(&text[m1.rm_eo], tdlen, &name, &status);
+
+		if (name != NULL) {
+			struct stop *stop = calloc(1, sizeof(struct stop));
+
+			stop->name = name;
+			stop->code = station_code(stop->name);
+			stop->status = status;
+
+			if (SLIST_EMPTY(list))
+				SLIST_INSERT_HEAD(list, stop, entries);
+			else
+				SLIST_INSERT_AFTER(last, stop, entries);
+
+			last = stop;
+		}
+
+		m1.rm_so = m2.rm_eo;
+		m1.rm_eo = len;
+	}
+
+	regfree(&p1);
+	regfree(&p2);
+}
+
+static size_t
+get_prev_stations(const char *from_code, const char *train, struct stop_list *list)
+{
+	const char *prefix = "";
+	const char *api_url = "http://dv.njtransit.com/mobile/train_stops.aspx?sid=%s&train=%s%s";
 	if (debug_server)
-		api_url = "http://127.0.0.1:8000/njtransit-train-%s-%s.html";
+		api_url = "http://127.0.0.1:8000/njtransit-train-%s-%s%s.html";
 
 	char fname[PATH_MAX];
 	char url[100];
 
 	snprintf(fname, PATH_MAX, "/tmp/njtransit-train-%s-%s.html", from_code, train);
-	snprintf(url, 100, api_url, from_code, train);
+
+	if (!debug_server && strlen(train) == 2)
+		prefix = "00";
+
+	snprintf(url, 100, api_url, from_code, prefix, train);
 
 	if (expired(fname)) {
 		if (fetch_url(url, fname) != 0)
@@ -621,7 +770,44 @@ get_prev_stations(const char *from_code, const char *train, const char* route[],
 			printf("%s fetched\n", fname);
 	}
 
+	parse_train_stops(fname, list);
+
+	if (debug) {
+		struct stop *stop;
+		SLIST_FOREACH(stop, list, entries) {
+			printf("stop: %s(%s), %s\n", stop->name, stop->code, stop->status);
+		}
+	}
+
 	return 0;
+}
+
+static struct stop *
+stop_find(struct stop_list *list, const char *station_code)
+{
+	struct stop *stop;
+
+	SLIST_FOREACH(stop, list, entries) {
+		if (strcmp(stop->code, station_code) == 0)
+			return stop;
+	}
+
+	return NULL;
+}
+
+static struct stop_list *
+reversed(struct stop_list *list)
+{
+	struct stop *stop, *newstop;
+	struct stop_list *nl = calloc(1, sizeof(struct stop_list));
+
+	SLIST_FOREACH(stop, list, entries) {
+		newstop = calloc(1, sizeof(struct stop));
+		memcpy(newstop, stop, sizeof(struct stop));
+		SLIST_INSERT_HEAD(nl, newstop, entries);
+	}
+
+	return nl;
 }
 
 static int
@@ -636,34 +822,46 @@ departures_get_upcoming(const char* from_code, const char *dest_code, struct buf
 
 	struct departure *next = departures_nearest(st->deps, dest_code);
 	if (next == NULL)
-		err(1, "No next departure found");
+		errx(1, "No next departure to %s(%s) found", station_name(dest_code), dest_code);
+	if (debug)
+		printf("next: %s %s\n", next->time, next->train);
 
-	const int MAXPREV = 10; // max previous stations
-	const char *route[MAXPREV];
+	struct stop_list *route = calloc(1, sizeof(struct stop_list));
 
-	get_prev_stations(from_code, next->train, route, MAXPREV);
+	get_prev_stations(from_code, next->train, route);
 
+	if (SLIST_EMPTY(route))
+		errx(1, "No route found for train %s from %s to %s", next->train, from_code, dest_code);
 
-	struct station **sts = calloc(MAXPREV, sizeof(struct stations));
+	struct stop_list *rev_route = reversed(route);
+
+	struct stop *origin_stop = stop_find(rev_route, from_code);
+	if (origin_stop == NULL)
+		errx(1, "Strange that cannot get origin stop code from reversed route");
+
+	const size_t MAXPREV = 10;
+	struct station_list *slist = calloc(1, sizeof(struct station_list));
 
 	size_t i = 0;
-	for (i = 0; i < MAXPREV; i++) {
 
-		if (route[i] == NULL)
-			break;
+	struct stop *stop = SLIST_NEXT(origin_stop, entries);
 
-		sts[i] = station_create(route[i]);
+	while (stop != NULL) {
 
-		if (sts[i] == NULL) {
-			fprintf(stderr, "Cannot get departures for station code %s\n", route[i]);
+		struct station *st = station_create(stop->code);
+
+		if (st == NULL) {
+			fprintf(stderr, "Cannot get departures for station code %s\n", stop->code);
 			return 1;
 		}
 
 		if (debug) {
-			printf("== Departures for %s(%s) ==\n", station_name(route[i]), route[i]);
-			station_dump(sts[i]);
+			printf("== Departures for %s(%s) ==\n", station_name(stop->code), stop->code);
+			station_dump(st);
 			printf("--\n");
 		}
+
+		stop = SLIST_NEXT(stop, entries);
 	}
 /*
 	const char *final_name = station_name();
@@ -695,8 +893,8 @@ departures_get_upcoming(const char* from_code, const char *dest_code, struct buf
 */
 	buf_append(b, credits, sz_credits);
 
-	for (i = 0; i < MAXPREV; i++)
-		station_destroy(sts[i]);
+//	for (i = 0; i < MAXPREV; i++)
+//		station_destroy(sts[i]);
 
 	return 0;
 }
@@ -710,7 +908,7 @@ int main(int argc, char **argv)
 
 	int ch;
 
-	while ((ch = getopt_long(argc, argv, "lhds:f:t:mvap:", longopts, NULL)) != -1) {
+	while ((ch = getopt_long(argc, argv, "lhdsmvaf:t:p:", longopts, NULL)) != -1) {
 		switch (ch) {
 			case 'd':
 				debug = 1;
@@ -734,6 +932,9 @@ int main(int argc, char **argv)
 				break;
 			case 't':
 				station_to = optarg;
+				break;
+			case 's':
+				debug_server = 1;
 				break;
 			case 'h':
 				usage();

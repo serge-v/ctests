@@ -164,10 +164,17 @@ static const char *stations[] = {
 	"Woodbridge",
 	"Woodcliff Lake",
 	"Secaucus Lower",
+	/* synonyms */
 	"Hoboken (SEC)",
+	"Ramsey Main St",
+	"Radburn Fair Lawn",
+	"Broadway Fair Lawn",
+	"Secaucus Lower Lvl",
+	"Salisbury Mills-Cornwall",
+	"Middletown NY",
 };
 
-static const size_t n_stations = 166;
+static const size_t n_stations = 172;
 
 static const char *codes[] = {
 	"AM",
@@ -335,8 +342,15 @@ static const char *codes[] = {
 	"WB",
 	"WL",
 	"TS",
-	"HB", /* for Hoboken with suffix (SEC) */
+	/* duplicate synonyms */
+	"HB",
+	"RY",
+	"FZ",
+	"BF",
+	"TS",
+	"CW",
+	"MD",
 };
 
-static const size_t n_codes = 166;
+static const size_t n_codes = 172;
 

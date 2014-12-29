@@ -12,7 +12,9 @@ add_executable(curltest	curltest.c)
 target_link_libraries(curltest ${curl_LIBRARY})
 
 add_executable(rextest rextest.c)
-target_link_libraries(rextest)
+
+add_executable(soapreq soapreq.c common/net.c)
+target_link_libraries(soapreq ${curl_LIBRARY})
 
 add_executable(mailto mailto.c common/net.c)
 target_link_libraries(mailto ${curl_LIBRARY})

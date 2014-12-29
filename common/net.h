@@ -17,4 +17,5 @@ struct message
 
 int send_email(const struct message *m);
 int fetch_url(const char *url, const char *fname);
+int post_url(const char *url, const char *post_data, const char *fname);
 
