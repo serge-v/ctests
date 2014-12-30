@@ -18,6 +18,7 @@
 #include "stations.h"
 #include "parser.h"
 #include "util.h"
+#include "color.h"
 #include "version.h"
 
 static int debug = 0;                 /* debug parameter */
@@ -106,19 +107,17 @@ struct route
 	struct station_list *stations;     /* station list for this route */
 };
 
+struct stop
+{
+	char *name;
+	const char *code;
+	char *status;
+	SLIST_ENTRY(stop) entries;
+};
+
+SLIST_HEAD(stop_list, stop);
+
 /* =========================================== */
-
-
-#define CEND    "\x1b[0m "
-#define BLACK   "\x1b[30m"
-#define RED     "\x1b[31m"
-#define YELLOW  "\x1b[33m"
-#define GREEN   "\x1b[32m"
-
-#define COL_TIME        BLACK  "%7s"   CEND
-#define COL_TRAIN       RED    "%5s"   CEND
-#define COL_DEST        YELLOW "%-20s" CEND
-#define COL_TRACK       GREEN  "%3s"   CEND
 
 static void
 departure_dump(struct departure *d)
@@ -329,7 +328,7 @@ station_destroy(struct station *s)
 }
 
 static struct departure *
-departures_nearest(struct departures *deps, const char *dest_code)
+departures_next(struct departures *deps, const char *dest_code)
 {
 	struct departure *dep;
 
@@ -484,16 +483,6 @@ parse_par(char *text, size_t len, char **stop_name, char **stop_status)
 	if (debug)
 		fprintf(log, "stop_name: %s, stop_status: %s\n", *stop_name, *stop_status);
 }
-
-struct stop
-{
-	char *name;
-	const char *code;
-	char *status;
-	SLIST_ENTRY(stop) entries;
-};
-
-SLIST_HEAD(stop_list, stop);
 
 static void
 parse_train_stops(const char *fname, struct stop_list* list)
@@ -653,7 +642,7 @@ departures_get_upcoming(const char* from_code, const char *dest_code, struct buf
 	if (dest_code == NULL)
 		return 1;
 
-	struct departure *next = departures_nearest(st->deps, dest_code);
+	struct departure *next = departures_next(st->deps, dest_code);
 	if (next == NULL)
 		errx(1, "No next departure to %s(%s) found", station_name(dest_code), dest_code);
 	if (debug)
@@ -773,8 +762,11 @@ int main(int argc, char **argv)
 				printf("departures\n");
 				printf("version %s\n", app_version);
 				printf("date %s\n", app_date);
-				if (strlen(app_diff) > 0)
-					printf("uncommited changes:\n%s\n", app_diff);
+				if (strlen(app_diff_stat) > 0) {
+					printf("uncommited changes:\n%s\n", app_diff_stat);
+					if (debug)
+						printf("full diff:\n%s\n", app_diff_full);
+				}
 				return 1;
 			default:
 				synopsis();
