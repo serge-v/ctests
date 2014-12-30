@@ -17,6 +17,7 @@
 #include "../common/net.h"
 #include "stations.h"
 #include "parser.h"
+#include "util.h"
 #include "version.h"
 
 static int debug = 0;                 /* debug parameter */
@@ -107,46 +108,6 @@ struct route
 
 /* =========================================== */
 
-
-static int
-read_text(const char *fname, char **text, size_t *len)
-{
-	struct stat st;
-	FILE *f = NULL;
-	char *buff = NULL;
-	int ret = -1;
-
-	if (stat(fname, &st) != 0) {
-		printf("Cannot stat file %s. Error: %d\n", fname, errno);
-		goto out;
-	}
-
-	f = fopen(fname, "rt");
-	if (f == NULL) {
-		printf("Cannot open file %s. Error: %d\n", fname, errno);
-		goto out;
-	}
-
-	buff = malloc(st.st_size + 1);
-	if (buff == NULL) {
-		printf("Cannot allocate %" PRId64 " bytes. Error: %d\n", st.st_size + 1, errno);
-		goto out;
-	}
-
-	fread(buff, 1, st.st_size, f);
-	fclose(f);
-	f = NULL;
-	buff[st.st_size] = 0;
-	*text = buff;
-	*len = st.st_size;
-	ret = 0;
-
-out:
-	if (f != NULL)
-		fclose(f);
-
-	return ret;
-}
 
 #define CEND    "\x1b[0m "
 #define BLACK   "\x1b[30m"
@@ -289,27 +250,6 @@ station_load(struct station* st, const char *fname)
 
 	regfree(&p1);
 	regfree(&p2);
-}
-
-static int
-expired(const char *fname)
-{
-	struct stat st;
-
-	int rc = stat(fname, &st);
-	if (rc != 0) {
-		if (debug)
-			printf("%s doesn't exist\n", fname);
-		return 1;
-	}
-
-	if (st.st_mtime + 60 < time(NULL)) {
-		if (debug)
-			printf("%s expired\n", fname);
-		return 1;
-	}
-
-	return 0;
 }
 
 static struct station*
