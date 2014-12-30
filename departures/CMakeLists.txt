@@ -12,6 +12,6 @@ add_custom_command(OUTPUT "version.c" "version.h"
 	COMMAND ./genversion.sh
 	DEPENDS [!v][!e][!r]*.c [!v][!e][!r]*.h *.sh CMakeLists.txt)
 
-add_executable(departures departures.c stations.c ../common/net.c version.c)
+add_executable(departures departures.c stations.c parser.c ../common/net.c version.c)
 target_link_libraries(departures ${curl_LIBRARY})
 

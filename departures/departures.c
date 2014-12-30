@@ -9,7 +9,6 @@
 #include <sys/queue.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sysexits.h>
 #include <time.h>
 #include <unistd.h>
 #include <getopt.h>
@@ -17,6 +16,7 @@
 
 #include "../common/net.h"
 #include "stations.h"
+#include "parser.h"
 #include "version.h"
 
 static int debug = 0;                 /* debug parameter */
@@ -73,7 +73,7 @@ struct departure
 {
 	char            *time;          /* departure time */
 	char            *destination;   /* destination station name */
-	char            *line;          /* rail line name */
+	char            *line;          /* rail route name */
 	char            *train;         /* train label or number */
 	char            *track;         /* departure track label or number */
 	char            *status;        /* train status */
@@ -107,15 +107,6 @@ struct route
 
 /* =========================================== */
 
-static void
-print_rex_error(int errcode, const regex_t *preg)
-{
-	char buf[1000];
-	size_t rc = regerror(errcode, preg, buf, sizeof(buf));
-	if (rc <= 0)
-		err(1, "cannot get error string for code: %d", errcode);
-	err(1, "%s", buf);
-}
 
 static int
 read_text(const char *fname, char **text, size_t *len)
@@ -157,19 +148,6 @@ out:
 	return ret;
 }
 
-struct trscanner
-{
-	char            *text;          // text to scan
-	int             len;	        // maximum length
-	regex_t         p1;             // <td>
-	regex_t         p2;             // </td>
-	regmatch_t      m1;             // current matches
-	regmatch_t      m2;             // current matches
-	char            *sbeg;          // td inner text start
-	char            *send;          // td inner text end
-	size_t          mlen;           // td inner text length
-};
-
 #define CEND    "\x1b[0m "
 #define BLACK   "\x1b[30m"
 #define RED     "\x1b[31m"
@@ -187,95 +165,6 @@ departure_dump(struct departure *d)
 	printf(COL_TIME COL_TRAIN "%s " COL_DEST COL_TRACK "%s\n",
 		d->time, d->train, d->code, d->destination,
 		d->track, d->status);
-}
-
-static void
-trscanner_create(struct trscanner *s, char *text, int len)
-{
-	int rc;
-
-	memset(s, 0, sizeof(struct trscanner));
-
-	if (debug)
-		fprintf(log, "extract tds from: %.*s\n", len, text);
-
-	rc = regcomp(&s->p1, "<td[^>]*>", REG_EXTENDED);
-	if (rc != 0)
-		print_rex_error(rc, &s->p1);
-
-	rc = regcomp(&s->p2, "</td>", REG_EXTENDED);
-	if (rc != 0)
-		print_rex_error(rc, &s->p2);
-
-	s->text = text;
-	s->len = len;
-	s->m1.rm_so = 0;
-	s->m1.rm_eo = len;
-}
-
-static void
-trscanner_destroy(struct trscanner *s)
-{
-	regfree(&s->p1);
-	regfree(&s->p2);
-	memset(s, 0, sizeof(struct trscanner));
-}
-
-static int
-trscanner_next(struct trscanner *s)
-{
-	int rc;
-
-	rc = regexec(&s->p1, s->text, 1, &s->m1, REG_STARTEND);
-
-	if (rc == REG_NOMATCH)
-		return 0;
-
-	if (rc != 0)
-		print_rex_error(rc, &s->p1);
-
-	s->m2.rm_so = s->m1.rm_eo;
-	s->m2.rm_eo = s->len;
-
-	rc = regexec(&s->p2, s->text, 1, &s->m2, REG_STARTEND);
-
-	if (rc == REG_NOMATCH)
-		return 0;
-
-	if (rc != 0)
-		print_rex_error(rc, &s->p2);
-
-	s->sbeg = &s->text[s->m1.rm_eo];
-	s->send = &s->text[s->m2.rm_so];
-	s->mlen = s->m2.rm_so - s->m1.rm_eo;
-	*s->send = 0;
-
-	/* skip space at start */
-
-	while (isspace(*s->sbeg)) {
-		s->sbeg++;
-		s->mlen--;
-	}
-
-	/* trim the end */
-
-	char *p = strchr(s->sbeg, '<');
-	if (p == NULL)
-		p = s->send;
-
-	while (isspace(*p) || *p == '<') {
-		*p = 0;
-		s->mlen--;
-		p--;
-	}
-
-	if (debug)
-		fprintf(log, "    td: [%s]\n", s->sbeg);
-
-	s->m1.rm_so = s->m2.rm_eo;
-	s->m1.rm_eo = s->len;
-
-	return 1;
 }
 
 static void
@@ -459,7 +348,7 @@ static void
 station_dump(struct station *s)
 {
 	printf("=== %s(%s) === [%zu] =====================\n",
-		s->name, s->code, s->deps->size - 1);
+		s->name, s->code, s->deps->size);
 
 	struct departure header = {
 		.time = "DEP",
@@ -477,6 +366,8 @@ station_dump(struct station *s)
 	SLIST_FOREACH(dep, s->deps->list, entries) {
 		departure_dump(dep);
 	}
+
+	printf("--\n");
 }
 
 static void
@@ -814,6 +705,8 @@ static int
 departures_get_upcoming(const char* from_code, const char *dest_code, struct buf *b)
 {
 	struct station *st = station_create(from_code);
+	if (debug)
+		station_dump(st);
 
 	dest_code = propose_destinations(st, dest_code);
 
@@ -855,11 +748,8 @@ departures_get_upcoming(const char* from_code, const char *dest_code, struct buf
 			return 1;
 		}
 
-		if (debug) {
-			printf("== Departures for %s(%s) ==\n", station_name(stop->code), stop->code);
+		if (debug)
 			station_dump(st);
-			printf("--\n");
-		}
 
 		stop = SLIST_NEXT(stop, entries);
 	}
