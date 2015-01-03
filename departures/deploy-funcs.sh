@@ -26,7 +26,7 @@ function build() {
 	fi
 	cd ~/src/xtree/ctests/departures
 	cmake .
-	echo == executing buld on host: $HOSTNAME ==
+	echo == executing build on host: $HOSTNAME ==
 	git pull
 	make clean
 	make
