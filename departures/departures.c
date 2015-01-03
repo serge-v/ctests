@@ -729,6 +729,19 @@ departures_get_upcoming(const char* from_code, const char *dest_code, struct buf
 	return 0;
 }
 
+static void
+version()
+{
+	printf("departures\n");
+	printf("version %s\n", app_version);
+	printf("date %s\n", app_date);
+	if (strlen(app_diff_stat) > 0) {
+		printf("uncommited changes:\n%s\n", app_diff_stat);
+		if (debug)
+			printf("full diff:\n%s\n", app_diff_full);
+	}
+}
+
 int main(int argc, char **argv)
 {
 	if (argc < 2) {
@@ -770,14 +783,7 @@ int main(int argc, char **argv)
 				usage();
 				return 1;
 			case 'v':
-				printf("departures\n");
-				printf("version %s\n", app_version);
-				printf("date %s\n", app_date);
-				if (strlen(app_diff_stat) > 0) {
-					printf("uncommited changes:\n%s\n", app_diff_stat);
-					if (debug)
-						printf("full diff:\n%s\n", app_diff_full);
-				}
+				version();
 				return 1;
 			default:
 				synopsis();
