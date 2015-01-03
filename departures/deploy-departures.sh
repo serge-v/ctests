@@ -10,6 +10,11 @@ elif [ x$1 == "x-i" ]; then
 		echo == executing info on host: \$HOSTNAME ==
 		crontab -l|grep departures
 		/usr/local/bin/departures -v"
+elif [ x$1 == "x-c" ]; then
+	shift
+	ssh -t $host "
+		echo == executing command on host: \$HOSTNAME ==
+		$*"
 elif [ x$1 == "x-t" ]; then
 	ssh -t $host "
 		echo == executing test on host: \$HOSTNAME ==
@@ -45,5 +50,6 @@ else
 	echo '    ' -b       build
 	echo '    ' -l       install
 	echo '    ' -t       test
+	echo '    ' -c       run command on remote server
 fi
 

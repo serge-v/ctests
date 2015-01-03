@@ -407,7 +407,7 @@ propose_destinations(struct station *st, const char *to)
 		codes[i++] = dep->code;
 	}
 
-	mergesort(codes, sz, sizeof(char*), compare);
+	qsort(codes, sz, sizeof(char*), compare);
 
 	size_t uniq_count = 0;
 	const char *prev = NULL;
