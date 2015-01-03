@@ -1,5 +1,5 @@
 #define CEND    "\x1b[0m "
-#define BLACK   "\x1b[30m"
+#define BLACK   "\x1b[0m"
 #define RED     "\x1b[31m"
 #define YELLOW  "\x1b[33m"
 #define GREEN   "\x1b[32m"
