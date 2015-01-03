@@ -1,4 +1,5 @@
 host=`cat ~/.config/departures/host.txt`
+dir=~/src/xtree/ctests/departures
 
 if [ x$1 == "x-l" ]; then
 	ssh -t $host "
@@ -6,10 +7,7 @@ if [ x$1 == "x-l" ]; then
 		sudo cp ~/src/xtree/ctests/departures/departures /usr/local/bin/
 		/usr/local/bin/departures -v"
 elif [ x$1 == "x-i" ]; then
-	ssh -t $host "
-		echo == executing info on host: \$HOSTNAME ==
-		crontab -l|grep departures
-		/usr/local/bin/departures -v"
+	ssh -t $host "cd $dir; source ./deploy-funcs.sh; info"
 elif [ x$1 == "x-c" ]; then
 	shift
 	ssh -t $host "
@@ -20,7 +18,7 @@ elif [ x$1 == "x-t" ]; then
 		echo == executing test on host: \$HOSTNAME ==
 		crontab -l|grep departures
 		/usr/local/bin/departures -v
-		/usr/local/bin/departures -f XG -m"
+		/usr/local/bin/departures -f XG -t HB -m"
 elif [ x$1 == "x-b" ]; then
 	ssh $host "
 		if [ ! -d ~/src/xtree ]; then
