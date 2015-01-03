@@ -1,10 +1,10 @@
-function install(){
+function install() {
 	echo == executing install on host: $HOSTNAME ==
 	sudo cp ~/src/xtree/ctests/departures/departures /usr/local/bin/
 	/usr/local/bin/departures -v
 }
 
-function info(){
+function info() {
 	echo == executing info on host: $HOSTNAME ==
 	crontab -l|grep departures
 	/usr/local/bin/departures -v

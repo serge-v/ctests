@@ -367,20 +367,11 @@ train_append_status(struct buf *b, struct station *st, const char *train)
 			continue;
 
 		status = dep->status;
-		rc = snprintf(s, sz, "    %s(%s): %s\n", station_name(st->code), st->code, status);
-		buf_append(b, s, rc);
+		if (status != NULL && *status != 0) {
+			rc = snprintf(s, sz, "    %s(%s): %s\n", station_name(st->code), st->code, status);
+			buf_append(b, s, rc);
+		}
 	}
-}
-
-static size_t
-route_idx(const char *code, const char *route[], size_t n_route)
-{
-	size_t i;
-	for (i = 0; i < n_route; i++) {
-		if (strcmp(code, route[i]) == 0)
-			return i;
-	}
-	return -1;
 }
 
 static int
@@ -662,6 +653,9 @@ departures_get_upcoming(const char* from_code, const char *dest_code, struct buf
 	if (debug)
 		printf("previous stations list:\n");
 
+	n = snprintf(s, sz, "\nTrains from %s to %s:\n\n", from_name, dest_name);
+	buf_append(b, s, n);
+
 	while (i < n_next_trains) {
 
 		if (dep->next == 0) {
@@ -672,9 +666,6 @@ departures_get_upcoming(const char* from_code, const char *dest_code, struct buf
 		if (debug)
 			printf("get status for next train %s to %s, idx: %zu\n", dep->train, dest_code, dep->next);
 
-		n = snprintf(s, sz, "\nNext train from %s to %s\n\n", from_name, dest_name);
-		buf_append(b, s, n);
-
 		n = snprintf(s, sz, "%s #%s, Track %s %s. Train status:\n\n",
 			dep->time, dep->train, dep->track, dep->status);
 		buf_append(b, s, n);
@@ -683,8 +674,13 @@ departures_get_upcoming(const char* from_code, const char *dest_code, struct buf
 
 		get_prev_stations(from_code, dep->train, route);
 
-		if (SLIST_EMPTY(route))
-			errx(1, "No route found for train %s from %s to %s", dep->train, from_code, dest_code);
+		if (SLIST_EMPTY(route)) {
+			n = snprintf(s, sz, "No route found for train %s from %s to %s\n", dep->train, from_code, dest_code);
+			buf_append(b, s, n);
+			dep = SLIST_NEXT(dep, entries);
+			i++;
+			continue;
+		}
 
 		struct stop_list *rev_route = reversed(route);
 
@@ -692,8 +688,6 @@ departures_get_upcoming(const char* from_code, const char *dest_code, struct buf
 		struct stop *origin_stop = stop_find(rev_route, from_code);
 		if (origin_stop == NULL)
 			errx(1, "Strange that cannot get origin stop code from reversed route");
-
-		const size_t MAXPREV = 10;
 
 		struct stop *stop = SLIST_NEXT(origin_stop, entries);
 
@@ -722,9 +716,6 @@ departures_get_upcoming(const char* from_code, const char *dest_code, struct buf
 	}
 
 	buf_append(b, credits, sz_credits);
-
-//	for (i = 0; i < MAXPREV; i++)
-//		station_destroy(sts[i]);
 
 	return 0;
 }
