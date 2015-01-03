@@ -271,12 +271,17 @@ write_callback(char *ptr, size_t size, size_t nmemb, void *userdata)
 		err(1, "Received %lu bytes that is more than expected %lu",
 		    resp->recv, resp->len);
 
-	if (resp->f != NULL) {
+	if (resp->fname != NULL) {
 
 		int rc = fwrite(ptr, 1, len, resp->f);
 
 		if (rc == -1 || rc != len)
 			err(1, "Cannot write file %s. Error: %d", resp->fname, errno);
+
+		if (resp->recv == resp->len) {
+			fclose(resp->f);
+			resp->f = NULL;
+		}
 
 		return len;
 	}
