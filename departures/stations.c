@@ -7,8 +7,8 @@ const char credits[] =
 	"\n"
 	"**********************************\n"
 	"Data provided by NJ TRANSIT, which\n"
-	"is the sole owner of the Data.    \n"
-	"**********************************\n\n";
+	"is the sole owner of the Data.\n"
+	"**********************************\n";
 
 const size_t sz_credits = sizeof(credits);
 

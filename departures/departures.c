@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <inttypes.h>
+#include <stdbool.h>
 
 #include "../common/net.h"
 #include "stations.h"
@@ -352,14 +353,15 @@ departures_calculate_next(struct departures *deps, const char *dest_code)
 	return num;
 }
 
-static void
-train_append_status(struct buf *b, struct station *st, const char *train)
+static bool
+train_append_status(struct buf *b, struct station *st, const char *train, bool appended)
 {
 	struct departure *dep;
 	int rc;
 	char s[1024];
 	size_t sz = sizeof(s);
 	const char *status = NULL;
+	const char *positive = " Previous stops status:\n\n";
 
 	SLIST_FOREACH(dep, st->deps->list, entries) {
 
@@ -369,9 +371,17 @@ train_append_status(struct buf *b, struct station *st, const char *train)
 		status = dep->status;
 		if (status != NULL && *status != 0) {
 			rc = snprintf(s, sz, "    %s(%s): %s\n", station_name(st->code), st->code, status);
+
+			if (!appended) {
+				buf_append(b, positive, strlen(positive));
+				appended = true;
+			}
+
 			buf_append(b, s, rc);
 		}
 	}
+
+	return appended;
 }
 
 static int
@@ -666,9 +676,15 @@ departures_get_upcoming(const char* from_code, const char *dest_code, struct buf
 		if (debug)
 			printf("get status for next train %s to %s, idx: %zu\n", dep->train, dest_code, dep->next);
 
-		n = snprintf(s, sz, "%s #%s, Track %s %s. Train status:\n\n",
-			dep->time, dep->train, dep->track, dep->status);
+		n = snprintf(s, sz, "%s #%s, Track %s",
+			dep->time, dep->train, dep->track);
 		buf_append(b, s, n);
+
+		if (dep->status != NULL && strlen(dep->status) > 0) {
+			buf_append(b, " ", 1);
+			buf_append(b, dep->status, strlen(dep->status));
+		}
+		buf_append(b, ".", 1);
 
 		struct stop_list *route = calloc(1, sizeof(struct stop_list));
 
@@ -691,6 +707,9 @@ departures_get_upcoming(const char* from_code, const char *dest_code, struct buf
 
 		struct stop *stop = SLIST_NEXT(origin_stop, entries);
 
+		const char *negative = " No previous stops status.\n";
+		bool appended = false;
+
 		while (stop != NULL) {
 
 			struct station *st = station_create(stop->code);
@@ -703,11 +722,16 @@ departures_get_upcoming(const char* from_code, const char *dest_code, struct buf
 			if (debug)
 				station_dump(st);
 
-			train_append_status(b, st, dep->train);
+			appended |= train_append_status(b, st, dep->train, appended);
 
 			stop = SLIST_NEXT(stop, entries);
 		}
 		/* == */
+
+		if (!appended)
+			buf_append(b, negative, strlen(negative));
+
+		buf_append(b, "\n", 1);
 
 		dep = SLIST_NEXT(dep, entries);
 		i++;

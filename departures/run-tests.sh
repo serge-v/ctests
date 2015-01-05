@@ -8,21 +8,27 @@ function server() {
 }
 
 function check() {
+	name=`printf "%-20s" "$1"`
+	cmd=$2
+	expected=$3
+
+	$cmd > 1~.txt
+	diff --brief 1~.txt $expected
+
 	if [[ $? == 1 ]] ; then
-		echo -e '\x1b[31m'test failed:'\x1b[0m' $_
+		echo -e "$name" '\x1b[31m' -- FAIL'\x1b[0m'
+		echo command: $cmd
+		colordiff -U 1000 1~.txt ../tests/1.txt
 	else
-		echo test passed: $_
+		echo "$name" -- OK
 	fi
 }
 
 server "01"
 sleep 1
 
-# test 1
-
-./departures -f XG -t PO -s > 1~.txt
-colordiff -u 1~.txt ../tests/1.txt
-check
+check "XG to PO" "./departures -f XG -t PO -s" ../tests/1.txt
+check "XG to PO cached" "./departures -f XG -t PO -s" ../tests/1.txt
 
 kill $PID
 wait 2> /dev/null
