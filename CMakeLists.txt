@@ -12,12 +12,15 @@ add_executable(curltest	curltest.c)
 target_link_libraries(curltest ${curl_LIBRARY})
 
 add_executable(rextest rextest.c)
+add_executable(defines defines.c)
 
 add_executable(soapreq soapreq.c common/net.c)
 target_link_libraries(soapreq ${curl_LIBRARY})
 
 add_executable(mailto mailto.c common/net.c)
 target_link_libraries(mailto ${curl_LIBRARY})
+
+add_executable(quickcd quickcd.c)
 
 add_custom_target(run
 COMMAND ./rextest.sh
