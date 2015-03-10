@@ -172,9 +172,12 @@ static const char *stations[] = {
 	"Secaucus Lower Lvl",
 	"Salisbury Mills-Cornwall",
 	"Middletown NY",
+	"Suffern (SEC)",
+	"Port Jervis (SEC)",
+	"Spring Valley (SEC)",
 };
 
-static const size_t n_stations = 172;
+static const size_t n_stations = 175;
 
 static const char *codes[] = {
 	"AM",
@@ -350,7 +353,10 @@ static const char *codes[] = {
 	"TS",
 	"CW",
 	"MD",
+	"SF",
+	"PO",
+	"SV",
 };
 
-static const size_t n_codes = 172;
+static const size_t n_codes = 175;
 
