@@ -175,9 +175,10 @@ static const char *stations[] = {
 	"Suffern (SEC)",
 	"Port Jervis (SEC)",
 	"Spring Valley (SEC)",
+	"Waldwick (SEC)",
 };
 
-static const size_t n_stations = 175;
+static const size_t n_stations = 176;
 
 static const char *codes[] = {
 	"AM",
@@ -356,7 +357,8 @@ static const char *codes[] = {
 	"SF",
 	"PO",
 	"SV",
+	"WK",
 };
 
-static const size_t n_codes = 175;
+static const size_t n_codes = 176;
 

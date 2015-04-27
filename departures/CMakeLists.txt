@@ -9,7 +9,7 @@ include_directories("/usr/local/include")
 find_library(curl_LIBRARY NAMES curl PATHS "/usr/local/lib")
 
 add_custom_command(OUTPUT "version.c" "version.h"
-	COMMAND ./genversion.sh
+	COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/genversion.sh
 	DEPENDS
 	[!v][!e][!r]*.c
 	[!v][!e][!r]*.h
