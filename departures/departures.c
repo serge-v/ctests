@@ -725,6 +725,7 @@ departures_get_upcoming(const char* from_code, const char *dest_code, struct buf
 			appended |= train_append_status(b, st, dep->train, appended);
 
 			stop = SLIST_NEXT(stop, entries);
+			station_destroy(st);
 		}
 		/* == */
 
