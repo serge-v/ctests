@@ -645,7 +645,7 @@ fetch_forecast(const char *fname, const char *url)
 static void
 version()
 {
-	printf("departures\n");
+	printf("weather\n");
 	printf("version %s\n", app_version);
 	printf("date %s\n", app_date);
 	if (strlen(app_diff_stat) > 0) {
@@ -735,7 +735,7 @@ int main(int argc, char **argv)
 		struct message m = {
 			.to = "serge0x76+weather@gmail.com",
 			.from = "serge0x76@gmail.com",
-			.subject = "wx",
+			.subject = "wx 2",
 			.body = out.s
 		};
 

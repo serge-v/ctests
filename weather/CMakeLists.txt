@@ -24,10 +24,12 @@ add_executable(
 )
 
 add_custom_command(
-	OUTPUT "version.c" "version.h"
+	OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/version.c" "${CMAKE_CURRENT_SOURCE_DIR}/version.h"
 	COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../common/genversion.sh
 	DEPENDS
 	${CMAKE_CURRENT_SOURCE_DIR}/../common/genversion.sh CMakeLists.txt
+	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+	COMMENT "Generating version."
 )
 
 target_link_libraries(weather xml2 curl)
