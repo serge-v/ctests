@@ -5,21 +5,9 @@
 #include <curl/curl.h>
 
 #include "net.h"
+#include "struct.h"
 
 /* ========= send_email using curl ========= */
-
-void
-buf_append(struct buf *b, const char *s, size_t n)
-{
-	if (b->len + n > b->cap) {
-		b->cap = (b->len + n) * 2;
-		b->s = realloc(b->s, b->cap);
-	}
-
-	memcpy(b->s + b->len, s, n);
-	b->len += n;
-	b->s[b->len] = 0;
-}
 
 static int
 message_compose(const struct message *m, struct buf *b)

@@ -1,3 +1,7 @@
+/**
+ * Serge Voilokov, 2015.
+ * Get departures for NJ transit trains.
+ */
 #include <ctype.h>
 #include <curl/curl.h>
 #include <err.h>
