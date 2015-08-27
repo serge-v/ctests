@@ -48,13 +48,22 @@ message_compose(const struct message *m, struct buf *b)
 	n = snprintf(s, sz, "From: %s\r\n", m->from);
 	buf_append(b, s, n);
 
+	buf_appendf(b, "Content-Type: multipart/mixed; boundary=frontier\r\n");
+	buf_appendf(b, "MIME-Version: 1.0\r\n");
+
 	if (m->subject != NULL) {
 		n = snprintf(s, sz, "Subject: %s\r\n", m->subject);
 		buf_append(b, s, n);
 	}
 
 	buf_append(b, "\r\n", 2);
+	buf_appendf(b, "--frontier\r\n");
+	buf_appendf(b, "Content-Type: text/html; charset=\"us-ascii\"\r\n");
+	buf_appendf(b, "MIME-Version: 1.0\r\n");
+	buf_appendf(b, "Content-Transfer-Encoding: 7bit\r\n");
+	buf_append(b, "\r\n", 2);
 	buf_append(b, m->body, strlen(m->body));
+	buf_appendf(b, "--frontier--\r\n");
 	buf_append(b, "\r\n", 2);
 
 	return 0;
@@ -178,15 +187,12 @@ curl_smtp_send(const struct smtp_info *s, const struct message *m)
 }
 
 int
-send_email(const struct message *m)
+send_email(const struct message *m, const char *password_file)
 {
-	char fname[PATH_MAX];
-	snprintf(fname, PATH_MAX, "%s/.config/departures/smtp.txt", getenv("HOME"));
-
 	struct smtp_info gmail = {
 		.server = "smtp://smtp.gmail.com:587",
 		.user = "serge0x76@gmail.com",
-		.password_file = fname,
+		.password_file = password_file,
 		.debug = 0
 	};
 

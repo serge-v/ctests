@@ -446,7 +446,7 @@ format_text_table(struct buf *buf, const struct dwml *dwml)
 
 	localtime_r(&dwml->base_time, &tm);
 	n = strftime(timestr, 30, "%Y-%m-%d %H", &tm);
-	buf_appendf(buf, "base_time: %s\n", timestr);
+	buf_appendf(buf, "<pre>base_time: %s\n", timestr);
 	buf_appendf(buf, "temperature: celsius\n");
 	buf_appendf(buf, "wind speed: meters per second\n");
 	buf_appendf(buf, "========== ==  === === === === === === === === === ===================\n");
@@ -505,6 +505,7 @@ format_text_table(struct buf *buf, const struct dwml *dwml)
 
 		buf_append(buf, "\n", 1);
 	}
+	buf_append(buf, "</pre>\n", 7);
 }
 
 static void
@@ -525,7 +526,7 @@ format_html_table(struct buf *buf, const struct dwml *dwml)
 	printf("========== ==  == == == == === === === === ===\n");
 
 	for (i = 0; i < 20; i++) {
-		struct row *r = &dwml->table[i];
+		const struct row *r = &dwml->table[i];
 		if (r->time == 0 || row_is_empty(r))
 			continue;
 
@@ -567,6 +568,7 @@ format_html_table(struct buf *buf, const struct dwml *dwml)
 
 		buf_append(buf, "\n", 1);
 	}
+	buf_append(buf, "</pre>\n", 7);
 }
 
 static void
@@ -699,11 +701,10 @@ int main(int argc, char **argv)
 	char url[1024];
 	struct buf out;
 	const char *urlfmt =
-
-	"http://graphical.weather.gov/xml/sample_products/browser_interface/ndfdXMLclient.php?"
-	"whichClient=NDFDgenMultiZipCode&"
-	"zipCodeList=%d&&product=time-series&Unit=m&maxt=maxt&mint=mint&temp=temp&"
-	"snow=snow&wspd=wspd&wdir=wdir&sky=sky&wx=wx&rh=rh&appt=appt&wwa=wwa&Submit=Submit";
+		"http://graphical.weather.gov/xml/sample_products/browser_interface/ndfdXMLclient.php?"
+		"whichClient=NDFDgenMultiZipCode&"
+		"zipCodeList=%d&&product=time-series&Unit=m&maxt=maxt&mint=mint&temp=temp&"
+		"snow=snow&wspd=wspd&wdir=wdir&sky=sky&wx=wx&rh=rh&appt=appt&wwa=wwa&Submit=Submit";
 
 	localtime_r(&now, &tm);
 	buf_init(&out);
@@ -731,7 +732,16 @@ int main(int argc, char **argv)
 	if (mail_recipients == NULL) {
 		puts(out.s);
 	} else {
+		struct message m = {
+			.to = "serge0x76+weather@gmail.com",
+			.from = "serge0x76@gmail.com",
+			.subject = "wx",
+			.body = out.s
+		};
 
+		char fname[PATH_MAX];
+		snprintf(fname, PATH_MAX, "%s/.config/weather/smtp.txt", getenv("HOME"));
+		send_email(&m, fname);
 	}
 
 	curl_global_cleanup();
