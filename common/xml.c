@@ -8,7 +8,7 @@
 #include <libxml/tree.h>
 
 const char *
-get_ctext(xmlNodePtr node)
+get_ctext(const xmlNodePtr node)
 {
 	if (node == NULL)
 		return NULL;
@@ -21,7 +21,7 @@ get_ctext(xmlNodePtr node)
 }
 
 const char *
-get_attr(xmlNodePtr node, const char *name)
+get_attr(const xmlNodePtr node, const char *name)
 {
 	if (node == NULL && node->type != XML_ELEMENT_NODE)
 		return NULL;

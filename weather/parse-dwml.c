@@ -46,7 +46,7 @@ usage()
 	       "options:\n"
 	       "    -z, --zip=zipcode      get weather forecast for zipcode\n"
 	       "    -m, --mail=recipients  set email to recipients\n"
-	       "    -h, --html             output in html format\n"
+	       "    -t, --html             output in html format\n"
 	       "    -d, --debug            output debug information\n"
 	       "    -f, --file             input dwml file for debugging\n"
 	       "    -v, --version          print version\n"
@@ -127,8 +127,6 @@ struct snow_amount
 struct row
 {
 	time_t time;                         /* rounded to the start of the hour */
-	const char* week_day;
-	int hour;
 	struct temperature temp_hourly;
 	struct temperature temp_max;
 	struct temperature temp_min;
@@ -158,7 +156,8 @@ struct dwml
 	struct row table[MAX_HOURS];        /* table with rows from current hour to +MAX_HOURS */
 };
 
-static enum temperature_type get_temp_type(const char *name)
+static enum temperature_type
+get_temp_type(const char *name)
 {
 	size_t i;
 
@@ -179,7 +178,7 @@ isoize_time(char *timestr, const char *dwml_time)
 }
 
 static struct time_layout *
-parse_time_layout(xmlNodePtr layout_node)
+parse_time_layout(const xmlNodePtr layout_node)
 {
 	xmlNodePtr n = NULL;
 	int res = 0;
@@ -220,199 +219,213 @@ parse_time_layout(xmlNodePtr layout_node)
 	return tl;
 }
 
-static struct time_layout *
-find_layout(struct dwml *dwml, const char *name)
+static const struct time_layout *
+find_layout(const struct dwml *dwml, xmlNodePtr node)
 {
 	size_t i;
+	const char *layout_name = get_attr(node, "time-layout");
 
 	for (i = 0; i < dwml->n_layouts; i++)
-		if (strcmp(dwml->time_layouts[i]->key, name) == 0)
+		if (strcmp(dwml->time_layouts[i]->key, layout_name) == 0)
 			return dwml->time_layouts[i];
 
 	return NULL;
 }
 
 static void
-parse_parameters(struct dwml* dwml, xmlNodePtr node)
+parse_temperature(struct dwml* dwml, const xmlNodePtr node)
 {
-	xmlNodePtr n, vn;
-	const char *layout_name, *value;
-	struct time_layout *layout;
 	size_t i;
+	xmlNodePtr vn;
 	int row_idx;
+	const char *value;
 
-	for (n = first_el(node, "temperature"); n != NULL; n = next_el(n)) {
-		const char *type = get_attr(n, "type");
-		enum temperature_type etemp = get_temp_type(type);
-		layout_name = get_attr(n, "time-layout");
-		layout = find_layout(dwml, layout_name);
+	const char *type = get_attr(node, "type");
+	enum temperature_type etemp = get_temp_type(type);
+	const struct time_layout * layout = find_layout(dwml, node);
 
-		for (i = 0, vn = first_el(n, "value"); vn != NULL; vn = next_el(vn), i++) {
-			value = get_ctext(vn);
-			row_idx = (layout->intervals[i].start_valid_time - dwml->base_time) / 3600;
-			if (row_idx < 0 || row_idx >= MAX_HOURS)
-				continue;
+	for (i = 0, vn = first_el(node, "value"); vn != NULL; vn = next_el(vn), i++) {
+		value = get_ctext(vn);
+		row_idx = (layout->intervals[i].start_valid_time - dwml->base_time) / 3600;
+		if (row_idx < 0 || row_idx >= MAX_HOURS)
+			continue;
 
-			switch (etemp) {
-				case TEMPERATURE_MAXIMUM:
-					dwml->table[row_idx].temp_max.celcius = atoi(value);
-					dwml->table[row_idx].temp_max.has_value = true;
-					break;
+		switch (etemp) {
+			case TEMPERATURE_MAXIMUM:
+				dwml->table[row_idx].temp_max.celcius = atoi(value);
+				dwml->table[row_idx].temp_max.has_value = true;
+				break;
 
-				case TEMPERATURE_MINIMUM:
-					dwml->table[row_idx].temp_min.celcius = atoi(value);
-					dwml->table[row_idx].temp_min.has_value = true;
-					break;
+			case TEMPERATURE_MINIMUM:
+				dwml->table[row_idx].temp_min.celcius = atoi(value);
+				dwml->table[row_idx].temp_min.has_value = true;
+				break;
 
-				case TEMPERATURE_HOURLY:
-					dwml->table[row_idx].temp_hourly.celcius = atoi(value);
-					dwml->table[row_idx].temp_hourly.has_value = true;
-					break;
+			case TEMPERATURE_HOURLY:
+				dwml->table[row_idx].temp_hourly.celcius = atoi(value);
+				dwml->table[row_idx].temp_hourly.has_value = true;
+				break;
 
-				case TEMPERATURE_APPARENT:
-					dwml->table[row_idx].temp_apparent.celcius = atoi(value);
-					dwml->table[row_idx].temp_apparent.has_value = true;
-					break;
+			case TEMPERATURE_APPARENT:
+				dwml->table[row_idx].temp_apparent.celcius = atoi(value);
+				dwml->table[row_idx].temp_apparent.has_value = true;
+				break;
 
-				default:
-					fprintf(stderr, "invalid etype");
-					break;
-			}
+			default:
+				fprintf(stderr, "invalid etype");
+				break;
 		}
 	}
+}
+
+static void
+parse_weather(struct dwml* dwml, const xmlNodePtr node)
+{
+	size_t i;
+	xmlNodePtr nc;
+	struct buf wxbuf;
+	int row_idx;
+	const struct time_layout *layout = find_layout(dwml, node);
+
+	buf_init(&wxbuf);
+
+	for (i = 0, nc = first_el(node, "weather-conditions"); nc != NULL; nc = next_el(nc), i++) {
+		row_idx = (layout->intervals[i].start_valid_time - dwml->base_time) / 3600;
+
+		if (row_idx < 0 || row_idx >= MAX_HOURS)
+			continue;
+
+		for (xmlNodePtr nv = first_el(nc, "value"); nv != NULL; nv = next_el(nv)) {
+			const char *coverage = get_attr(nv, "coverage");
+			const char *intensity = get_attr(nv, "intensity");
+			const char *additive = get_attr(nv, "additive");
+			const char *qualifier = get_attr(nv, "qualifier");
+			const char *weather_type = get_attr(nv, "weather-type");
+
+			if (strcmp(intensity, "none") == 0)
+				intensity = NULL;
+
+			if (strcmp(qualifier, "none") == 0)
+				qualifier = NULL;
+
+			if (additive != NULL) {
+				if (strcmp(additive, "and") == 0)
+					buf_appendf(&wxbuf, ",");
+				else
+					buf_appendf(&wxbuf, " %s", additive);
+			}
+
+			if (intensity != NULL)
+				buf_appendf(&wxbuf, " %s", intensity);
+
+			if (strcmp(weather_type, "thunderstorms") == 0)
+				weather_type = "☈";
+			else if (strcmp(weather_type, "rain showers") == 0)
+				weather_type = "☂";
+
+			if (strcmp(coverage, "slight chance") == 0)
+				coverage = "20%";
+			else if (strcmp(coverage, "chance") == 0)
+				coverage = "40%";
+			else if (strcmp(coverage, "likely") == 0)
+				coverage = "60%";
+
+			buf_appendf(&wxbuf, " %s %s", weather_type, coverage);
+
+			if (qualifier != NULL)
+				buf_appendf(&wxbuf, " (%s)", qualifier);
+		}
+
+		if (wxbuf.len > 0) {
+			dwml->table[row_idx].weather = strdup(wxbuf.s);
+			buf_clean(&wxbuf);
+		}
+	}
+}
+
+static struct row *
+get_row(struct dwml* dwml, const struct time_layout *layout, int idx)
+{
+	int row_idx = (layout->intervals[idx].start_valid_time - dwml->base_time) / 3600;
+	if (row_idx < 0 || row_idx >= MAX_HOURS)
+		return NULL;
+
+	return &dwml->table[row_idx];
+}
+
+static void
+parse_parameters(struct dwml* dwml, const xmlNodePtr node)
+{
+	xmlNodePtr n, vn;
+	const struct time_layout *layout;
+	size_t i;
+	struct row* row;
+
+	for (n = first_el(node, "temperature"); n != NULL; n = next_el(n))
+		parse_temperature(dwml, n);
 
 	for (n = first_el(node, "wind-speed"); n != NULL; n = next_el(n)) {
-		layout_name = get_attr(n, "time-layout");
-		layout = find_layout(dwml, layout_name);
+		layout = find_layout(dwml, n);
 		for (i = 0, vn = first_el(n, "value"); vn != NULL; vn = next_el(vn), i++) {
-			value = get_ctext(vn);
-			row_idx = (layout->intervals[i].start_valid_time - dwml->base_time) / 3600;
-			if (row_idx < 0 || row_idx >= MAX_HOURS)
+			row = get_row(dwml, layout, i);
+			if (row == NULL)
 				continue;
 
-			dwml->table[row_idx].wind_speed.mps = atoi(value);
-			dwml->table[row_idx].wind_speed.has_value = true;
+			row->wind_speed.mps = atoi(get_ctext(vn));
+			row->wind_speed.has_value = true;
 		}
 	}
 
 	for (n = first_el(node, "direction"); n != NULL; n = next_el(n)) {
-		layout_name = get_attr(n, "time-layout");
-		layout = find_layout(dwml, layout_name);
+		layout = find_layout(dwml, n);
 		for (i = 0, vn = first_el(n, "value"); vn != NULL; vn = next_el(vn), i++) {
-			value = get_ctext(vn);
-			row_idx = (layout->intervals[i].start_valid_time - dwml->base_time) / 3600;
-			if (row_idx < 0 || row_idx >= MAX_HOURS)
+			row = get_row(dwml, layout, i);
+			if (row == NULL)
 				continue;
 
-			dwml->table[row_idx].wind_dir.degrees = atoi(value);
-			dwml->table[row_idx].wind_dir.has_value = true;
+			row->wind_dir.degrees = atoi(get_ctext(vn));
+			row->wind_dir.has_value = true;
 		}
 	}
 
 	for (n = first_el(node, "cloud-amount"); n != NULL; n = next_el(n)) {
-		layout_name = get_attr(n, "time-layout");
-		layout = find_layout(dwml, layout_name);
+		layout = find_layout(dwml, n);
 		for (i = 0, vn = first_el(n, "value"); vn != NULL; vn = next_el(vn), i++) {
-			value = get_ctext(vn);
-			row_idx = (layout->intervals[i].start_valid_time - dwml->base_time) / 3600;
-			if (row_idx < 0 || row_idx >= MAX_HOURS)
+			row = get_row(dwml, layout, i);
+			if (row == NULL)
 				continue;
 
-			dwml->table[row_idx].cloud_amount.percent = atoi(value);
-			dwml->table[row_idx].cloud_amount.has_value = true;
+			row->cloud_amount.percent = atoi(get_ctext(vn));
+			row->cloud_amount.has_value = true;
 		}
 	}
 
 	for (n = first_el(node, "precipitation"); n != NULL; n = next_el(n)) {
-		layout_name = get_attr(n, "time-layout");
-		layout = find_layout(dwml, layout_name);
+		layout = find_layout(dwml, n);
 		for (i = 0, vn = first_el(n, "value"); vn != NULL; vn = next_el(vn), i++) {
-			value = get_ctext(vn);
-			row_idx = (layout->intervals[i].start_valid_time - dwml->base_time) / 3600;
-			if (row_idx < 0 || row_idx >= MAX_HOURS)
+			row = get_row(dwml, layout, i);
+			if (row == NULL)
 				continue;
 
-			dwml->table[row_idx].snow_amount.centimeters = atoi(value);
-			dwml->table[row_idx].snow_amount.has_value = true;
+			row->snow_amount.centimeters = atoi(get_ctext(vn));
+			row->snow_amount.has_value = true;
 		}
 	}
 
 	for (n = first_el(node, "humidity"); n != NULL; n = next_el(n)) {
-		layout_name = get_attr(n, "time-layout");
-		layout = find_layout(dwml, layout_name);
+		layout = find_layout(dwml, n);
 		for (i = 0, vn = first_el(n, "value"); vn != NULL; vn = next_el(vn), i++) {
-			value = get_ctext(vn);
-			row_idx = (layout->intervals[i].start_valid_time - dwml->base_time) / 3600;
-			if (row_idx < 0 || row_idx >= MAX_HOURS)
+			row = get_row(dwml, layout, i);
+			if (row == NULL)
 				continue;
 
-			dwml->table[row_idx].humidity.percent = atoi(value);
-			dwml->table[row_idx].humidity.has_value = true;
+			row->humidity.percent = atoi(get_ctext(vn));
+			row->humidity.has_value = true;
 		}
 	}
 
-	for (n = first_el(node, "weather"); n != NULL; n = next_el(n)) {
-		layout_name = get_attr(n, "time-layout");
-		layout = find_layout(dwml, layout_name);
-
-		xmlNodePtr nc;
-		struct buf wxbuf;
-
-		buf_init(&wxbuf);
-
-		for (i = 0, nc = first_el(n, "weather-conditions"); nc != NULL; nc = next_el(nc), i++) {
-			row_idx = (layout->intervals[i].start_valid_time - dwml->base_time) / 3600;
-
-			if (row_idx < 0 || row_idx >= MAX_HOURS)
-				continue;
-
-			for (xmlNodePtr nv = first_el(nc, "value"); nv != NULL; nv = next_el(nv)) {
-				const char *coverage = get_attr(nv, "coverage");
-				const char *intensity = get_attr(nv, "intensity");
-				const char *additive = get_attr(nv, "additive");
-				const char *qualifier = get_attr(nv, "qualifier");
-				const char *weather_type = get_attr(nv, "weather-type");
-
-				if (strcmp(intensity, "none") == 0)
-					intensity = NULL;
-
-				if (strcmp(qualifier, "none") == 0)
-					qualifier = NULL;
-
-				if (additive != NULL) {
-					if (strcmp(additive, "and") == 0)
-						buf_appendf(&wxbuf, ",");
-					else
-						buf_appendf(&wxbuf, " %s", additive);
-				}
-
-				if (intensity != NULL)
-					buf_appendf(&wxbuf, " %s", intensity);
-
-				if (strcmp(weather_type, "thunderstorms") == 0)
-					weather_type = "☈";
-				else if (strcmp(weather_type, "rain showers") == 0)
-					weather_type = "☂";
-
-				if (strcmp(coverage, "slight chance") == 0)
-					coverage = "20%";
-				else if (strcmp(coverage, "chance") == 0)
-					coverage = "40%";
-				else if (strcmp(coverage, "likely") == 0)
-					coverage = "60%";
-
-				buf_appendf(&wxbuf, " %s %s", weather_type, coverage);
-
-				if (qualifier != NULL)
-					buf_appendf(&wxbuf, " (%s)", qualifier);
-			}
-
-			if (wxbuf.len > 0) {
-				dwml->table[row_idx].weather = strdup(wxbuf.s);
-				buf_clean(&wxbuf);
-			}
-		}
-	}
+	for (n = first_el(node, "weather"); n != NULL; n = next_el(n))
+		parse_weather(dwml, n);
 }
 
 static void
@@ -565,7 +578,7 @@ set_rows_time(struct dwml* dwml)
 }
 
 static void
-parse_data(struct dwml* dwml, xmlNodePtr data_node)
+parse_data(struct dwml* dwml, const xmlNodePtr data_node)
 {
 	xmlNodePtr n = NULL;
 	size_t i = 0;
@@ -709,10 +722,12 @@ int main(int argc, char **argv)
 	if (mail_recipients == NULL) {
 		puts(out.s);
 	} else {
+		char subject[100];
+		sprintf(subject, "wx: weather for zip %05d", zip);
 		struct message m = {
 			.to = "serge0x76+weather@gmail.com",
 			.from = "serge0x76@gmail.com",
-			.subject = "wx 2",
+			.subject = subject,
 			.body = out.s
 		};
 

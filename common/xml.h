@@ -6,10 +6,10 @@
 #include <sys/queue.h>
 
 /* get text */
-const char *get_ctext(xmlNodePtr node);
+const char *get_ctext(const xmlNodePtr node);
 
 /* get attribute */
-const char *get_attr(xmlNodePtr node, const char *name);
+const char *get_attr(const xmlNodePtr node, const char *name);
 
 /* iterate */
 xmlNodePtr first_el(xmlNodePtr parent_node, const char *name);
