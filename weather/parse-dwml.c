@@ -18,12 +18,13 @@ static bool debug = false;
 static const char *mail_recipients = false; /* send mail to comma delimited recipients */
 static bool html = false;                   /* output in html format */
 static int zip = 10010;                     /* get weather forecast for zip code */
-static FILE *log = NULL;                    /* debug log file */
+static char fname[PATH_MAX];                /* path to current dwml file */
 
 static struct option longopts[] = {
 	{ "zip",          required_argument, NULL, 'z' },
 	{ "mail",         required_argument, NULL, 'm' },
 	{ "html",         no_argument,       NULL, 't' },
+	{ "file",         required_argument, NULL, 'f' },
 	{ "debug",        no_argument,       NULL, 'd' },
 	{ "help",         no_argument,       NULL, 'h' },
 	{ "version",      no_argument,       NULL, 'v' },
@@ -47,6 +48,7 @@ usage()
 	       "    -m, --mail=recipients  set email to recipients\n"
 	       "    -h, --html             output in html format\n"
 	       "    -d, --debug            output debug information\n"
+	       "    -f, --file             input dwml file for debugging\n"
 	       "    -v, --version          print version\n"
 	       );
 }
@@ -137,6 +139,11 @@ struct row
 	struct cloud_amount cloud_amount;
 	struct snow_amount snow_amount;
 	char *weather;
+};
+
+enum legend_position {
+	LEGEND_TOP,   /* useful for terminals */
+	LEGEND_BOTTOM /* useful for emails */
 };
 
 #define MAX_HOURS 24*7
@@ -437,7 +444,24 @@ row_is_empty(const struct row *r)
 }
 
 static void
-format_text_table(struct buf *buf, const struct dwml *dwml)
+format_legend(struct buf *buf, const char *time)
+{
+	buf_appendf(buf, "\nLegend\n");
+	buf_appendf(buf, "======\n");
+	buf_appendf(buf, "start time: %s\n", time);
+	buf_appendf(buf, "TMP -- hourly temperature, celsius\n");
+	buf_appendf(buf, "APR -- hourly apparent temperature, celsius\n");
+	buf_appendf(buf, "MIN -- minimal temperature for a day, celsius\n");
+	buf_appendf(buf, "MAX -- maximum temperature for a day, celsius\n");
+	buf_appendf(buf, "HUM -- humidity, relative\n");
+	buf_appendf(buf, "CLD -- cloud amount, percent\n");
+	buf_appendf(buf, "SPD -- wind speed, meters per second\n");
+	buf_appendf(buf, "DIR -- wind direction, degrees\n");
+	buf_appendf(buf, "SNW -- snow, centimeters\n");
+}
+
+static void
+format_text_table(struct buf *buf, const struct dwml *dwml, enum legend_position legend_pos)
 {
 	size_t i, n;
 	char timestr[30];
@@ -446,9 +470,10 @@ format_text_table(struct buf *buf, const struct dwml *dwml)
 
 	localtime_r(&dwml->base_time, &tm);
 	n = strftime(timestr, 30, "%Y-%m-%d %H", &tm);
-	buf_appendf(buf, "<pre>base_time: %s\n", timestr);
-	buf_appendf(buf, "temperature: celsius\n");
-	buf_appendf(buf, "wind speed: meters per second\n");
+	
+	if (legend_pos == LEGEND_TOP)
+		format_legend(buf, timestr);
+
 	buf_appendf(buf, "========== ==  === === === === === === === === === ===================\n");
 	buf_appendf(buf, "DATE...... HR  AIR.................... WIND... SNW CONDITIONS.........\n");
 	buf_appendf(buf, "               TMP APR MIN MAX HUM CLD SPD DIR    \n");
@@ -505,69 +530,19 @@ format_text_table(struct buf *buf, const struct dwml *dwml)
 
 		buf_append(buf, "\n", 1);
 	}
-	buf_append(buf, "</pre>\n", 7);
+
+	buf_appendf(buf, "========== ==  === === === === === === === === === ===================\n");
+
+	if (legend_pos == LEGEND_BOTTOM)
+		format_legend(buf, timestr);
+
 }
 
 static void
 format_html_table(struct buf *buf, const struct dwml *dwml)
 {
-	size_t i, n;
-	char timestr[30];
-	struct tm tm;
-
-	localtime_r(&dwml->base_time, &tm);
-	n = strftime(timestr, 30, "%Y-%m-%d %H", &tm);
-	printf("base_time: %s\n", timestr);
-	printf("temperature: celsius\n");
-	printf("wind speed: meters per second\n");
-	printf("========== ==  == == == == === === === === ===\n");
-	printf("DATE...... HR  AIR................ WIND... SNW\n");
-	printf("               TM AP MN MX HUM CLD SPD DIR    \n");
-	printf("========== ==  == == == == === === === === ===\n");
-
-	for (i = 0; i < 20; i++) {
-		const struct row *r = &dwml->table[i];
-		if (r->time == 0 || row_is_empty(r))
-			continue;
-
-		localtime_r(&r->time, &tm);
-		n = strftime(timestr, 30, "%Y-%m-%d %H ", &tm);
-		buf_append(buf, timestr, n);
-		buf_add_temperature(buf, &r->temp_hourly);
-		buf_add_temperature(buf, &r->temp_apparent);
-		buf_add_temperature(buf, &r->temp_min);
-		buf_add_temperature(buf, &r->temp_max);
-
-		if (r->humidity.has_value)
-			buf_appendf(buf, "%4d", r->humidity.percent);
-		else
-			buf_append(buf, "    ", 4);
-
-		if (r->cloud_amount.has_value)
-			buf_appendf(buf, "%4d", r->cloud_amount.percent);
-		else
-			buf_append(buf, "    ", 4);
-
-		if (r->wind_speed.has_value)
-			buf_appendf(buf, "%4d", r->wind_speed.mps);
-		else
-			buf_append(buf, "    ", 4);
-
-		if (r->wind_dir.has_value)
-			buf_appendf(buf, "%4d", r->wind_dir.degrees);
-		else
-			buf_append(buf, "    ", 4);
-
-		if (r->snow_amount.has_value)
-			buf_appendf(buf, "%4d", r->snow_amount.centimeters);
-		else
-			buf_append(buf, "    ", 4);
-
-		if (r->weather != NULL)
-			buf_appendf(buf, " %s", r->weather);
-
-		buf_append(buf, "\n", 1);
-	}
+	buf_append(buf, "<pre>\n", 6);
+	format_text_table(buf, dwml, LEGEND_BOTTOM);
 	buf_append(buf, "</pre>\n", 7);
 }
 
@@ -664,18 +639,19 @@ int main(int argc, char **argv)
 
 	int ch;
 
-	while ((ch = getopt_long(argc, argv, "dm:thvz:", longopts, NULL)) != -1) {
+	while ((ch = getopt_long(argc, argv, "dm:thvz:f:", longopts, NULL)) != -1) {
 		switch (ch) {
 			case 'd':
 				debug = true;
-				log = fopen("/tmp/weather-debug.log", "wt");
-				fprintf(log, "==================\n\n\n\n\n\n\n");
 				break;
 			case 'z':
 				zip = atoi(optarg);
 				break;
 			case 'm':
 				mail_recipients = optarg;
+				break;
+			case 'f':
+				strncpy(fname, optarg, PATH_MAX);
 				break;
 			case 't':
 				html = true;
@@ -695,7 +671,6 @@ int main(int argc, char **argv)
 	curl_global_init(CURL_GLOBAL_ALL);
 
 	char timestr[50];
-	char fname[200];
 	struct tm tm;
 	time_t now = time(NULL);
 	char url[1024];
@@ -713,8 +688,10 @@ int main(int argc, char **argv)
 	if (debug)
 		fprintf(stderr, "zip %d. Fetching %s\n", zip, url);
 
-	strftime(timestr, 50, "%Y%m%d-%H", &tm);
-	sprintf(fname, "%s/.cache/weather/zip-%05d-%s.xml", getenv("HOME"), zip, timestr);
+	if (!debug && *fname == 0) {
+		strftime(timestr, 50, "%Y%m%d-%H", &tm);
+		sprintf(fname, "%s/.cache/weather/zip-%05d-%s.xml", getenv("HOME"), zip, timestr);
+	}
 
 	if (debug)
 		fprintf(stderr, "Cached filename: %s\n", fname);
@@ -727,7 +704,7 @@ int main(int argc, char **argv)
 	if (html)
 		format_html_table(&out, dwml);
 	else
-		format_text_table(&out, dwml);
+		format_text_table(&out, dwml, LEGEND_TOP);
 
 	if (mail_recipients == NULL) {
 		puts(out.s);
