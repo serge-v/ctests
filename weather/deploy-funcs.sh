@@ -37,5 +37,5 @@ function build() {
 	echo == crontab ==
 	crontab -l | grep weather
 	echo
-	echo Project was build on $host. For install run script with -i parameter.
+	echo Project was build on $HOSTNAME. For install run script with -l parameter.
 }

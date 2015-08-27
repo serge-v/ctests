@@ -4,15 +4,16 @@
 #
 # Usage:
 # cd ~/b/weatherb
-# cmake ~/src/xtree/ctests/weather/
+# cmake -DCMAKE_TOOLCHAIN_FILE=~/src/xtree/ctests/weather/macports.cmake ~/src/xtree/ctests/weather/
 
 cmake_minimum_required(VERSION 2.6)
 
-find_library(ssl_LIBRARY NAMES ssl)
-find_library(crypto_LIBRARY NAMES crypto)
+find_package(CURL REQUIRED)
+find_package(LibXml2 REQUIRED)
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
-include_directories(/opt/ports/dev/include/libxml2/)
+include_directories(${LIBXML2_INCLUDE_DIR})
+include_directories(${CURL_INCLUDE_DIR})
 
 add_executable(
 	weather
@@ -32,4 +33,4 @@ add_custom_command(
 	COMMENT "Generating version."
 )
 
-target_link_libraries(weather xml2 curl)
+target_link_libraries(weather ${LIBXML2_LIBRARIES} ${CURL_LIBRARY})
