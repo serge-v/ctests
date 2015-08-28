@@ -14,7 +14,7 @@ function test() {
 	echo == executing test on host: $HOSTNAME ==
 	crontab -l | grep weather
 	/usr/local/bin/weather -v
-	/usr/local/bin/weather -z 10974 -m aaa
+	/usr/local/bin/weather -z 10974 -m aaa -t
 }
 
 function build() {
