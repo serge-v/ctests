@@ -1,5 +1,6 @@
-// Serge Voilokov, 2015
-// helpers for libxml2.
+/* Serge Voilokov, 2015
+ * helpers for libxml2.
+ */
 
 #include "xml.h"
 #include <string.h>
@@ -10,10 +11,12 @@
 const char *
 get_ctext(const xmlNodePtr node)
 {
+	xmlNodePtr n;
+
 	if (node == NULL)
 		return NULL;
 
-	for (xmlNodePtr n = node->children; n != NULL; n = n->next)
+	for (n = node->children; n != NULL; n = n->next)
 		if (n->type == XML_TEXT_NODE)
 			return (char *)n->content;
 
@@ -38,10 +41,12 @@ get_attr(const xmlNodePtr node, const char *name)
 xmlNodePtr
 first_el(xmlNodePtr parent_node, const char *name)
 {
+	xmlNodePtr n;
+
 	if (parent_node == NULL)
 		return NULL;
 
-	for (xmlNodePtr n = parent_node->children; n != NULL; n = n->next)
+	for (n = parent_node->children; n != NULL; n = n->next)
 		if (n->type == XML_ELEMENT_NODE && xmlStrEqual(n->name, BAD_CAST(name)) == 1)
 			return n;
 
@@ -51,7 +56,9 @@ first_el(xmlNodePtr parent_node, const char *name)
 xmlNodePtr
 next_el(xmlNodePtr node)
 {
-	for (xmlNodePtr n = node->next; n != NULL; n = n->next)
+	xmlNodePtr n;
+
+	for (n = node->next; n != NULL; n = n->next)
 		if (n->type == XML_ELEMENT_NODE && xmlStrEqual(n->name, node->name) == 1)
 			return n;
 
