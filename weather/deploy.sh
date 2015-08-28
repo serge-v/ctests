@@ -1,3 +1,6 @@
+set -e
+source deploy-funcs.sh
+
 host=`cat ~/.config/departures/host.txt`
 callcmd="cd \${HOME}/src/xtree/ctests/weather; source ./deploy-funcs.sh; "
 
@@ -15,11 +18,12 @@ elif [ x$1 == "x-t" ]; then
 elif [ x$1 == "x-b" ]; then
 	ssh -t $host "$callcmd build"
 elif [ x$1 == "x-u" ]; then
-	ssh -t $host "cd \${HOME}/src/xtree/ctests ; git pull"
+	ssh -t $host "mkdir -p ~/src/xtree"
+	ssh -t $host "cd ~/src/xtree; git clone https://github.com/serge-v/ctests"
 else
 	echo usage: deploy.h [-bitl]
 	echo '    ' -i       info
-	echo '    ' -u       pull
+	echo '    ' -u       clone
 	echo '    ' -b       build
 	echo '    ' -l       install
 	echo '    ' -t       test

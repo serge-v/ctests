@@ -8,11 +8,13 @@
 #include "../common/struct.h"
 #include "version.h"
 #include <err.h>
-#include <time.h>
 #include <stdbool.h>
 #include <string.h>
 #include <getopt.h>
 #include <curl/curl.h>
+
+#define _XOPEN_SOURCE
+#include <time.h>
 
 static bool debug = false;
 static const char *mail_recipients = false; /* send mail to comma delimited recipients */
@@ -282,7 +284,7 @@ static void
 parse_weather(struct dwml* dwml, const xmlNodePtr node)
 {
 	size_t i;
-	xmlNodePtr nc;
+	xmlNodePtr nc, nv;
 	struct buf wxbuf;
 	int row_idx;
 	const struct time_layout *layout = find_layout(dwml, node);
@@ -295,7 +297,7 @@ parse_weather(struct dwml* dwml, const xmlNodePtr node)
 		if (row_idx < 0 || row_idx >= MAX_HOURS)
 			continue;
 
-		for (xmlNodePtr nv = first_el(nc, "value"); nv != NULL; nv = next_el(nv)) {
+		for (nv = first_el(nc, "value"); nv != NULL; nv = next_el(nv)) {
 			const char *coverage = get_attr(nv, "coverage");
 			const char *intensity = get_attr(nv, "intensity");
 			const char *additive = get_attr(nv, "additive");
@@ -643,6 +645,23 @@ version()
 	}
 }
 
+static void
+send_email_to_me(const char *body)
+{
+	char subject[100];
+	sprintf(subject, "wx: weather for zip %05d", zip);
+	struct message m = {
+		.to = "serge0x76+weather@gmail.com",
+		.from = "serge0x76@gmail.com",
+		.subject = subject,
+		.body = body
+	};
+
+	char fname[PATH_MAX];
+	snprintf(fname, PATH_MAX, "%s/.config/weather/smtp.txt", getenv("HOME"));
+	send_email(&m, fname);
+}
+
 int main(int argc, char **argv)
 {
 	if (argc < 2) {
@@ -719,23 +738,12 @@ int main(int argc, char **argv)
 	else
 		format_text_table(&out, dwml, LEGEND_TOP);
 
-	if (mail_recipients == NULL) {
+	if (mail_recipients == NULL)
 		puts(out.s);
-	} else {
-		char subject[100];
-		sprintf(subject, "wx: weather for zip %05d", zip);
-		struct message m = {
-			.to = "serge0x76+weather@gmail.com",
-			.from = "serge0x76@gmail.com",
-			.subject = subject,
-			.body = out.s
-		};
+	else
+		send_email_to_me(out.s);
 
-		char fname[PATH_MAX];
-		snprintf(fname, PATH_MAX, "%s/.config/weather/smtp.txt", getenv("HOME"));
-		send_email(&m, fname);
-	}
-
+	buf_clean(&out);
 	curl_global_cleanup();
 
 	return 0;

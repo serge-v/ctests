@@ -18,16 +18,11 @@ function test() {
 }
 
 function build() {
-	if [ ! -d ~/src/xtree ]; then
-		mkdir -p ~/src/xtree
-		cd ~/src/xtree
-		git clone https://github.com/serge-v/ctests
-		cd ctests
-	fi
-	cd ~/src/xtree/ctests/weather
-	cmake .
 	echo == executing build on host: $HOSTNAME ==
+	cd ~/src/xtree/ctests
 	git pull
+	cd weather
+	cmake .
 	make clean
 	make
 	echo == new version ==
@@ -38,4 +33,10 @@ function build() {
 	crontab -l | grep weather
 	echo
 	echo Project was build on $HOSTNAME. For install run script with -l parameter.
+}
+
+function clone_ctests() {
+	host=$1
+	ssh -t $host "mkdir -p ~/src/xtree"
+	ssh -t $host "cd ~/src/xtree; git clone https://github.com/serge-v/ctests"
 }
