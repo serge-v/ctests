@@ -321,9 +321,9 @@ parse_weather(struct dwml* dwml, const xmlNodePtr node)
 				buf_appendf(&wxbuf, " %s", intensity);
 
 			if (strcmp(weather_type, "thunderstorms") == 0)
-				weather_type = "☈";
+				weather_type = "TND";
 			else if (strcmp(weather_type, "rain showers") == 0)
-				weather_type = "☂";
+				weather_type = "SHW";
 
 			if (strcmp(coverage, "slight chance") == 0)
 				coverage = "20%";
@@ -459,11 +459,17 @@ row_is_empty(const struct row *r)
 }
 
 static void
-format_legend(struct buf *buf, const char *time)
+format_legend(struct buf *buf, const char *timestr)
 {
-	buf_appendf(buf, "\nLegend\n");
+	struct tm tm;
+	time_t now = time(NULL);
+
+	buf_appendf(buf, "\nInfo\n");
+	buf_appendf(buf,   "====\n");
+	buf_appendf(buf, "UTC:         %s", asctime(gmtime_r(&now, &tm)));
+	buf_appendf(buf, "report time: %s\n", timestr);
+	buf_appendf(buf, "Legend\n");
 	buf_appendf(buf, "======\n");
-	buf_appendf(buf, "start time: %s\n", time);
 	buf_appendf(buf, "TMP -- hourly temperature, celsius\n");
 	buf_appendf(buf, "APR -- hourly apparent temperature, celsius\n");
 	buf_appendf(buf, "MIN -- minimal temperature for a day, celsius\n");
@@ -473,6 +479,8 @@ format_legend(struct buf *buf, const char *time)
 	buf_appendf(buf, "SPD -- wind speed, meters per second\n");
 	buf_appendf(buf, "DIR -- wind direction, degrees\n");
 	buf_appendf(buf, "SNW -- snow, centimeters\n");
+	buf_appendf(buf, "TND -- thunderstorms\n");
+	buf_appendf(buf, "SHW -- rain showers\n");
 }
 
 static void
