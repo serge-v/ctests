@@ -605,7 +605,7 @@ format_html_table(struct buf *buf, const struct dwml *dwml)
 
 		localtime_r(&r->time, &tm);
 		if (prev_day != tm.tm_mday) {
-			buf_appendf(buf, "\n<tr><td colspan=\"12\" style=\"background-color: lightsteelblue;\">");
+			buf_appendf(buf, "\n<tr><td colspan=\"12\" style=\"border: lightsteelblue 1px solid;\">");
 			n = strftime(timestr, 30, "%Y-%m-%d %a", &tm);
 			buf_append(buf, timestr, n);
 			buf_appendf(buf, "</td></tr>\n<tr>");
