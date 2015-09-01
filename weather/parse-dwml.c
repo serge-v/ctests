@@ -440,15 +440,6 @@ buf_add_temperature(struct buf *buf, const struct temperature *t)
 		buf_append(buf, "    ", 4);
 }
 
-static void
-buf_add_temperature_td(struct buf *buf, const struct temperature *t)
-{
-	if (t->has_value)
-		buf_appendf(buf, "<td>%4d</td>", t->celcius);
-	else
-		buf_append(buf, "<td></td>", 4);
-}
-
 static bool
 row_is_empty(const struct row *r)
 {
@@ -573,8 +564,8 @@ format_text_table(struct buf *buf, const struct dwml *dwml, enum legend_position
 
 static const char header[] =
 	"<tr style=\"background-color: lightsteelblue;\">"
-	"<th>HR</th>"
-	"<th colspan=\"6\">AIR</th>"
+	"<th>HR&nbsp;&nbsp;</th>"
+	"<th colspan=\"5\">AIR</th>"
 	"<th colspan=\"2\">WIND</th>"
 	"<th>SNOW</th>"
 	"<th>CONDITIONS</th>"
@@ -582,7 +573,6 @@ static const char header[] =
 	"<tr>"
 	"<th></th>"
 	"<th>TMP</th>"
-	"<th>APR</th>"
 	"<th>MIN</th>"
 	"<th>MAX</th>"
 	"<th>HUM</th>"
@@ -591,6 +581,8 @@ static const char header[] =
 	"<th>DIR</th>"
 	"</tr>\n";
 
+const char *pink_border = " style=\"border: solid 1px pink; border-bottom: none\"";
+
 static void
 format_html_table(struct buf *buf, const struct dwml *dwml)
 {
@@ -598,9 +590,10 @@ format_html_table(struct buf *buf, const struct dwml *dwml)
 	char timestr[30];
 	struct tm tm;
 	int prev_day = 0;
+	const char *style = "";
 
 	localtime_r(&dwml->base_time, &tm);
-	n = strftime(timestr, 30, "%Y-%m-%d %H", &tm);
+	n = strftime(timestr, 30, "%Y-%m-%d %H %a", &tm);
 
 	buf_appendf(buf, "<table border=\"0\">\n");
 	buf_appendf(buf, header);
@@ -610,46 +603,64 @@ format_html_table(struct buf *buf, const struct dwml *dwml)
 		if (r->time == 0 || row_is_empty(r))
 			continue;
 
-		buf_appendf(buf, "<tr>");
-
 		localtime_r(&r->time, &tm);
 		if (prev_day != tm.tm_mday) {
-			buf_appendf(buf, "<tr><td colspan=\"12\" style=\"background-color: lightsteelblue;\">");
-			n = strftime(timestr, 30, "%Y-%m-%d", &tm);
+			buf_appendf(buf, "\n<tr><td colspan=\"12\" style=\"background-color: lightsteelblue;\">");
+			n = strftime(timestr, 30, "%Y-%m-%d %a", &tm);
 			buf_append(buf, timestr, n);
-			buf_appendf(buf, "</td>\n</tr>\n<tr>");
+			buf_appendf(buf, "</td></tr>\n<tr>");
 			prev_day = tm.tm_mday;
+		} else {
+			buf_appendf(buf, "<tr>");
 		}
+
+		if (r->temp_max.has_value)
+			style = pink_border;
 
 		buf_appendf(buf, "<td>%02d</td>", tm.tm_hour);
 
-		buf_add_temperature_td(buf, &r->temp_hourly);
-		buf_add_temperature_td(buf, &r->temp_apparent);
-		buf_add_temperature_td(buf, &r->temp_min);
-		buf_add_temperature_td(buf, &r->temp_max);
+//		if (r->temp_hourly.has_value)
+//			buf_appendf(buf, "<td>%d</td>", r->temp_hourly.celcius);
+//		else
+//			buf_appendf(buf, "<td></td>");
+
+		if (r->temp_apparent.has_value)
+			buf_appendf(buf, "<td>%d</td>", r->temp_apparent.celcius);
+		else
+			buf_appendf(buf, "<td></td>");
+
+		if (r->temp_min.has_value)
+			buf_appendf(buf, "<td%s>%d</td>", style, r->temp_min.celcius);
+		else
+			buf_appendf(buf, "<td></td>");
+
+		if (r->temp_max.has_value)
+			buf_appendf(buf, "<td%s>%d</td>", style, r->temp_max.celcius);
+		else
+			buf_appendf(buf, "<td></td>");
 
 		if (r->humidity.has_value)
-			buf_appendf(buf, "<td>%4d</td>", r->humidity.percent);
+			buf_appendf(buf, "<td>%d</td>", r->humidity.percent);
 		else
 			buf_appendf(buf, "<td></td>");
 
 		if (r->cloud_amount.has_value)
-			buf_appendf(buf, "<td>%4d</td>", r->cloud_amount.percent);
+			buf_appendf(buf, "<td>%d</td>", r->cloud_amount.percent);
 		else
 			buf_appendf(buf, "<td></td>");
 
 		if (r->wind_speed.has_value)
-			buf_appendf(buf, "<td>%4d</td>", r->wind_speed.mps);
+			buf_appendf(buf, "<td>%d</td>", r->wind_speed.mps);
 		else
 			buf_appendf(buf, "<td></td>");
 
 		if (r->wind_dir.has_value)
-			buf_appendf(buf, "<td>%4d</td>", r->wind_dir.degrees);
+			buf_appendf(buf, "<td>%d</td>", r->wind_dir.degrees);
 		else
 			buf_appendf(buf, "<td></td>");
 
-		if (r->snow_amount.has_value)
-			buf_appendf(buf, "<td>%4d</td>", r->snow_amount.centimeters);
+		if (r->snow_amount.has_value && r->snow_amount.centimeters > 0)
+			buf_appendf(buf, "<td>%d</td>", r->snow_amount.centimeters);
 		else
 			buf_appendf(buf, "<td></td>");
 
