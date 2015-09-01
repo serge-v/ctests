@@ -47,7 +47,7 @@ usage()
 	printf(
 	       "options:\n"
 	       "    -z, --zip=zipcode      get weather forecast for zipcode\n"
-	       "    -m, --mail=recipients  set email to recipients\n"
+	       "    -m, --mail=recipients  send email to recipients\n"
 	       "    -t, --html             output in html format\n"
 	       "    -d, --debug            output debug information\n"
 	       "    -f, --file             input dwml file for debugging\n"
@@ -203,8 +203,9 @@ parse_time_layout(const xmlNodePtr layout_node)
 
 	for (i = 0, n = first_el(layout_node, "start-valid-time"); n != NULL; n = next_el(n), i++) {
 		const char *text = get_ctext(n);
+		/* remove semicolon, i.e. 2015-08-21T08:00:00-04:00 to 2015-08-21T08:00:00-0400 */
 		isoize_time(timestr, text);
-		/* example: 2015-08-21T08:00:00-04:00 */
+		/* parse: 2015-08-21T08:00:00-0400 */
 		if (strptime(timestr, "%Y-%m-%dT%H:%M:%S%z", &tm) == NULL)
 			err(1, "cannot parse start-valid-time: %s", text);
 		tl->intervals[i].start_valid_time = mktime(&tm);
@@ -711,7 +712,7 @@ load_dwml(const char *file)
 
 	doc = xmlReadFile(file, NULL, 0);
 	if (doc == NULL)
-		err(1, "error: could not parse file %s", file);
+		err(1, "could not parse file %s", file);
 
 	struct dwml *dwml = calloc(1, sizeof(struct dwml));
 //	dwml->base_time = 1440144000;
@@ -832,6 +833,9 @@ int main(int argc, char **argv)
 
 	if (!debug)
 		fetch_forecast(fname, url);
+
+	setenv("TZ", "EST5EDT", 1);
+	tzset();
 
 	const struct dwml *dwml = load_dwml(fname);
 
