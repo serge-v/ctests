@@ -825,7 +825,7 @@ int main(int argc, char **argv)
 		if (email) {
 			struct message m = {
 				.from = "serge0x76@gmail.com",
-				.to = "voilokov@gmail.com",
+				.to = "serge0x76+njt@gmail.com",
 				.subject = "train to Hoboken",
 				.body = b.s,
 			};
