@@ -3,7 +3,7 @@
 #include <curl/curl.h>
 #include <stdlib.h>
 
-#include "common/net.h"
+#include "../common/net.h"
 
 int main(int argc, char **argv)
 {
@@ -20,7 +20,7 @@ int main(int argc, char **argv)
 		.body = argv[3]
 	};
 
-	int rc = send_email(&m);
+	int rc = send_email(&m, "");
 
 	if (rc != 0) {
 		printf("error: %d\n", rc);

@@ -13,8 +13,9 @@ target_link_libraries(curltest ${curl_LIBRARY})
 
 add_executable(rextest rextest.c)
 add_executable(defines defines.c)
+add_executable(cleanup-attr cleanup.c)
 
-add_executable(mailto mailto.c common/net.c)
+add_executable(mailto mailto.c ../common/net.c  ../common/struct.c)
 target_link_libraries(mailto ${curl_LIBRARY})
 
 add_custom_target(run
@@ -22,6 +23,3 @@ add_custom_target(run
 	DEPENDS rextest
 	WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
-
-add_subdirectory("departures")
-
