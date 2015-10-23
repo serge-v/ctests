@@ -1,6 +1,0 @@
-- display credits with station names and everywhere
-- create SV route
-- get departure by station name, not only by code
-- replace buf with bsd sbuf
-- do not recreate trscanner between rows
-- write debug log to /tmp which is tmpfs to minimize SSD usage

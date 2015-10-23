@@ -26,8 +26,6 @@ mysleep(uint64_t us)
 {
 	usleep(us);
 	total_slept += us;
-//	printf("%6llu slept: %llu\n", elapsed(), us);
-
 }
 
 struct info
@@ -66,7 +64,8 @@ clean_up(struct disposer *d)
 {
 	uint64_t cost = get_ticks() - tls.start;
 
-	printf("%6llu %s.out %llu us, acc: %llu\n", elapsed(), tls.name, cost, tls.acc_cost);
+	printf("%.3f %s.out %.3f ms, acc: %.3f ms\n", elapsed() / 1000.0, tls.name,
+	       cost / 1000.0, tls.acc_cost / 1000.0);
 
 	d->parent.acc_cost += tls.acc_cost;
 	tls = d->parent;
@@ -75,30 +74,30 @@ clean_up(struct disposer *d)
 }
 
 void
-test_xx()
+level3()
 {
-	struct disposer d = init("x300");
-	if (0) d.parent.name = NULL;
+	struct disposer d = init("level-3");
+
 	mysleep(300000);
 	clean_up(&d);
 }
 
 void
-test_x()
+level2()
 {
-	struct disposer d = init("x200");
-	if (0) d.parent.name = NULL;
-	test_xx();
+	struct disposer d = init("level-2");
+
+	level3();
 	mysleep(200000);
 	clean_up(&d);
 }
 
 void
-test()
+level1()
 {
-	struct disposer d = init("x100");
-	if (0) d.parent.name = NULL;
-	test_x();
+	struct disposer d = init("level-1");
+
+	level2();
 	mysleep(100000);
 	clean_up(&d);
 }
@@ -107,13 +106,13 @@ int main(int argc, char **argv)
 {
 	start_time = get_ticks();
 
-	struct disposer d = init("x400");
-	if (0) d.parent.name = NULL;
+	struct disposer d = init("level-0");
 
-	test();
+	level1();
 	mysleep(400000);
-	printf("total slept: %llu\n", total_slept);
-
 	clean_up(&d);
+
+	printf("total slept: %.3fu\n", total_slept / 1000.0);
+
 	return 0;
 }
