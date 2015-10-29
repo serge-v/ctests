@@ -62,7 +62,7 @@ init(const char *name)
 void
 clean_up(struct disposer *d)
 {
-	uint64_t cost = get_ticks() - tls.start;
+	uint64_t cost = get_ticks() - tls.start - tls.acc_cost;
 
 	printf("%.3f %s.out %.3f ms, acc: %.3f ms\n", elapsed() / 1000.0, tls.name,
 	       cost / 1000.0, tls.acc_cost / 1000.0);
@@ -70,7 +70,7 @@ clean_up(struct disposer *d)
 	d->parent.acc_cost += tls.acc_cost;
 	tls = d->parent;
 	tls.acc_cost += cost;
-	tls.start += tls.acc_cost;
+//	tls.start += tls.acc_cost;
 }
 
 void

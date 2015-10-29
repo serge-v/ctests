@@ -13,8 +13,6 @@
 #include <time.h>
 #include <unistd.h>
 
-static int debug = 1;
-
 static void
 print_rex_error(int errcode, const regex_t *preg)
 {
@@ -53,8 +51,6 @@ test1()
 
 	m1.rm_so = 0;
 	m1.rm_eo = len;
-
-	size_t count = 0;
 
 	for (;;) {
 

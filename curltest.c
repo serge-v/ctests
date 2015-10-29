@@ -25,13 +25,6 @@ struct response
 	char *data;             // http body
 };
 
-static void
-response_free(struct response* resp)
-{
-	if (resp->data != NULL)
-		free(resp->data);
-}
-
 static size_t
 header_callback(char *buffer, size_t size, size_t nitems, void *userdata)
 {

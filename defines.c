@@ -33,13 +33,5 @@ int main()
 	printf("timeval.tv_usec: %lu, offs: %llu\n", sizeof(tv.tv_usec), (uint64_t)&tv.tv_usec - (uint64_t)&tv);
 
 	printf("pthread_t: %lu\n", sizeof(pthread_t));
-	
-	unsigned long long* p1 = 0;
-	unsigned long* p2 = 0;
-	
-	// check -Wincompatible-pointer-types warning
-
-	p1 = p2;
-	p2 = p1;
 }
 

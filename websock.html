@@ -1,0 +1,37 @@
+<html>
+<head>
+<title>websocket test</title>
+<script>
+
+var count = 0;
+
+function onload()
+{
+	var ws = new WebSocket("ws://localhost:44126");
+	var el = document.getElementById("counter");
+
+	ws.onclose = function(e) {
+		console.log('ws closed. code: ' + e.code + ', reason: ' + e.reason);
+		el.innerText = "disconnected.";
+	}
+
+	ws.onmessage = function(e) {
+		console.log(e.data.split('\n'));
+		count++;
+		el.innerText = count;
+	}
+
+	ws.onopen = function() {
+		console.log('ws opened');
+		el.innerText = "connected.";
+	}
+}
+
+</script>
+</head>
+
+<body onload="onload()">
+<div id="counter">Disconnected.</div>
+</body>
+</html>
+
