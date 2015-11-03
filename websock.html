@@ -9,6 +9,7 @@ var dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
 var line = document.createElementNS('http://www.w3.org/2000/svg','line');
 var text = document.createElementNS('http://www.w3.org/2000/svg','text');
 var color = 'gray';
+var fillcolor = 'red';
 
 function draw_dot(xy)
 {
@@ -16,6 +17,7 @@ function draw_dot(xy)
 	var f = dot.cloneNode();
 	f.setAttribute('cx', parseInt(a[0]));
 	f.setAttribute('cy', parseInt(a[1]));
+	f.setAttribute('fill', fillcolor);
 	p.appendChild(f);
 }
 
@@ -58,9 +60,9 @@ function onload()
 {
 	dot.setAttribute('cx', 10);
 	dot.setAttribute('cy', 10);
-	dot.setAttribute('r', 1);
+	dot.setAttribute('r', 2);
 	dot.setAttribute('stroke', 'gray');
-	dot.setAttribute('fill','red');
+	dot.setAttribute('fill', fillcolor);
 	dot.setAttribute('stroke-width', '1');
 
 	line.setAttribute('x1', 10);
@@ -97,6 +99,8 @@ function onload()
 				draw_text(cmd[1]);
 			else if (cmd.length == 2 && cmd[0] == 'c')
 				color = cmd[1];
+			else if (cmd.length == 2 && cmd[0] == 'f')
+				fillcolor = cmd[1];
 			else if (cmd == 'clear')
 				p.innerHTML = '';
 			else
