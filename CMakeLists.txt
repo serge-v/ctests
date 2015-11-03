@@ -7,6 +7,7 @@ find_library(curl_LIBRARY NAMES curl PATHS "/usr/local/lib")
 find_package(OpenSSL REQUIRED)
 
 include_directories(${OPENSSL_INCLUDE_DIR})
+include_directories(common)
 
 add_executable(curltest	curltest.c)
 target_link_libraries(curltest ${curl_LIBRARY})
@@ -15,19 +16,17 @@ add_executable(rextest rextest.c)
 add_executable(defines defines.c)
 add_executable(cleanup-attr cleanup.c)
 
+add_subdirectory(common)
+
 add_executable(
 	svhttpd
 	svhttpd.c
-	../common/socket.c ../common/socket.h
-	../common/http.c ../common/http.h
-	../common/struct.c ../common/struct.h
-	../common/crypt.c ../common/crypt.h
 )
 
-target_link_libraries(svhttpd ${OPENSSL_SSL_LIBRARY} ${OPENSSL_CRYPTO_LIBRARY})
+target_link_libraries(svhttpd ${OPENSSL_SSL_LIBRARY} ${OPENSSL_CRYPTO_LIBRARY} svc)
 
-add_executable(mailto mailto.c ../common/net.c  ../common/struct.c)
-target_link_libraries(mailto ${curl_LIBRARY})
+add_executable(mailto mailto.c)
+target_link_libraries(mailto ${curl_LIBRARY} svc)
 
 add_custom_target(run
 	COMMAND ./rextest.sh
