@@ -16,6 +16,8 @@
 #include "../common/crypt.h"
 #include "../common/socket.h"
 
+bool debug = false;
+
 /*
  * accept_key = base64(sha1(sec_websocket_key + guid))
  */
@@ -105,86 +107,20 @@ broadcast(const struct buf *frame)
 	ssize_t sent;
 
 	for (i = 0; i < ws_count; i++) {
+		if (wsclients[i].socket == 0)
+			continue;
+
 		sent = send(wsclients[i].socket, frame->s, frame->len, 0);
-		if (sent == -1)
+		if (sent == -1) {
 			warn("send to %d\n", wsclients[i].socket);
-		else
-			printf("sent to %d: %zd\n", wsclients[i].socket, sent);
+			close(wsclients[i].socket);
+			wsclients[i].socket = 0;
+		} else if (debug) {
+			warn("sent to %d: %zd\n", wsclients[i].socket, sent);
+		}
 	}
 }
 
-struct calcpars
-{
-	int row, prev_row, prev_x, prev_y, dt;
-	uint64_t timestamp, count, prev_count, prev_time, start_time;
-	struct buf frame, payload;
-	char s[1024];
-};
-
-static void
-cpars_init(struct calcpars *p)
-{
-	memset(p, 0, sizeof(struct calcpars));
-	p->prev_row = -1;
-	buf_init(&p->frame);
-	buf_init(&p->payload);
-}
-
-static void
-cpars_read_history_record(struct calcpars *p, FILE *f)
-{
-	fgets(p->s, 1024, f);
-	int n = sscanf(p->s, "%llu\t%llu\n", &p->timestamp, &p->count);
-	if (n != 2)
-		errx(1, "wrong line: %s", p->s);
-}
-
-static void
-cpars_process_record(struct calcpars *p, int websocket)
-{
-	int x, y, dt;
-	uint64_t diff_x, diff_y;
-
-	if (p->prev_count == 0) {
-		p->prev_count = p->count;
-		p->start_time = p->timestamp;
-		p->prev_time = p->timestamp;
-		return;
-	}
-
-	dt = p->timestamp - p->prev_time;
-	if (dt <= 0)
-		return;
-
-	diff_x = (p->timestamp - p->start_time)*20;
-	diff_y = (p->count - p->prev_count);
-
-	x = diff_x % 1000;
-	p->row = diff_x / 1000;
-	y = p->row * 50 + diff_y / dt;
-
-	if (p->row != p->prev_row) {
-		buf_appendf(&p->payload, "c=gray\nl=0,%d,1000,%d\n", p->row*50, p->row*50);
-		p->prev_x = 0;
-		p->prev_y += 50;
-	}
-
-	buf_appendf(&p->payload, "c=darkgreen\nl=%d,%d,%d,%d", p->prev_x, p->prev_y, x, y);
-	make_frame(&p->frame, &p->payload);
-
-	if (websocket == -1)
-		broadcast(&p->frame);
-	else
-		send(websocket, p->frame.s, p->frame.len, 0);
-
-	p->frame.len = 0;
-	p->payload.len = 0;
-	p->prev_count = p->count;
-	p->prev_time = p->timestamp;
-	p->prev_row = p->row;
-	p->prev_x = x;
-	p->prev_y = y;
-}
 
 static void
 send_frame(const char *text, int websocket)
@@ -206,43 +142,59 @@ send_frame(const char *text, int websocket)
 }
 
 static void
-send_history(int websocket)
+read_record(ssize_t len, uint64_t *value)
 {
-	struct calcpars cpars;
+	char s[1024];
 
-	cpars_init(&cpars);
-
-	FILE *f = fopen(events_fname, "rt");
-	if (f == NULL)
-		err(1, "events~.txt");
-
-	while (!feof(f)) {
-		cpars_read_history_record(&cpars, f);
-		cpars_process_record(&cpars, websocket);
-	}
-
-	send_frame("c=red", websocket);
-}
-
-static struct calcpars realtime_cpars;
-
-static void
-cpars_read_realtime_record(struct calcpars *p, ssize_t len)
-{
-	ssize_t sz = read(fd, p->s, len);
+	ssize_t sz = read(fd, s, len);
 	if (sz == -1)
 		err(1, "cpars_read_realtime_record");
 
-	int n = sscanf(p->s, "%llu\t%llu\n", &p->timestamp, &p->count);
-	if (n != 2)
-		errx(1, "wrong line: %s", p->s);
+	int n = sscanf(s, "%llu\n", value);
+	if (n != 1)
+		errx(1, "wrong line: %s", s);
 }
+
+static int x = 0;
+static int y = 0;
 
 static void
 send_last(ssize_t len)
 {
-	cpars_read_realtime_record(&realtime_cpars, len);
-	cpars_process_record(&realtime_cpars, -1);
+	uint64_t value = 0;
+	struct buf payload, frame;
+	buf_init(&frame);
+	buf_init(&payload);
+
+	if (x > 100) {
+		x = 0;
+		y += 50;
+	}
+
+	if (y > 1000) {
+		y = 0;
+		buf_appendf(&payload, "clean=1\n");
+	}
+
+	read_record(len, &value);
+
+	if (value == 0) {
+		buf_appendf(&payload, "f=red\n");
+	} else if (value < 100) {
+		buf_appendf(&payload, "f=magenta\n");
+		value = 10;
+	} else if (value < 200) {
+		buf_appendf(&payload, "f=yellow\n");
+		value = 20;
+	} else {
+		buf_appendf(&payload, "f=green\n");
+		value = 30;
+	}
+
+	buf_appendf(&payload, "p=%d,%d", (x++)*8, y + value);
+	make_frame(&frame, &payload);
+	broadcast(&frame);
+	buf_clean(&payload);
 }
 
 static int
@@ -283,8 +235,8 @@ draw_corners(int websocket)
 		    "l=-5,0,5,0\n"
 		    "l=1000,-5,1000,5\n"
 		    "l=995,0,1005,0\n"
-		    "l=0,495,0,505\n"
-		    "l=-5,500,5,500\n"
+		    "l=0,1495,0,1505\n"
+		    "l=-5,1500,5,1500\n"
 		    );
 
 	make_frame(&buf, &payload);
@@ -305,7 +257,6 @@ on_request(struct httpreq *req, struct buf *resp, void *data)
 
 		int websocket = upgrade_connection(req, resp);
 		draw_corners(websocket);
-		send_history(websocket);
 	}
 
 	buf_appendf(resp, "HTTP/1.1 200 OK\r\n");
@@ -314,16 +265,23 @@ on_request(struct httpreq *req, struct buf *resp, void *data)
 	buf_appendf(resp, "test\n");
 }
 
-int main()
+int main(int argc, char **argv)
 {
-	const int port = 44126;
+	int port = 44126;
+
+	for (int i = 1; i < argc; i++)
+	{
+		if (argv[i][0] == '-' && argv[i][1] == 'a')
+			port = 44125;
+	}
+
 	const char *address = "0.0.0.0";
 	int i, nev;
 	off_t off;
 	struct httpd server;
-	struct timespec tout = { 2, 0 };
 	struct kevent chlist[2];
 	struct kevent evlist[2];
+	struct timespec tout = { 30, 0 };
 
 	asprintf(&events_fname, events_fname, getenv("HOME"));
 	memset(&server, 0, sizeof(struct httpd));
@@ -354,8 +312,6 @@ int main()
 	buf_init(&tick_frame);
 	buf_init(&payload);
 
-	int count = 0;
-
 	for (;;) {
 		nev = kevent(kq, chlist, 2, evlist, 2, &tout);
 		if (nev < 0)
@@ -363,7 +319,7 @@ int main()
 
 		if (nev == 0) {
 			buf_clean(&payload);
-			buf_appendf(&payload, "p=%d,20", (count++)*4);
+			buf_appendf(&payload, "f=blue\np=%d,0", (x++)*8);
 			make_frame(&tick_frame, &payload);
 			broadcast(&tick_frame);
 			continue;
