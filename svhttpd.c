@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <err.h>
@@ -71,9 +72,6 @@ static int kq = -1;
 static struct wsclient wsclients[MAX_WS_COUNT];
 static int ws_count = 0;
 static int fd = -1;
-static uint64_t prev_count;
-static uint64_t prev_time;
-static time_t start_time;
 
 static void
 make_frame(struct buf *buf, const struct buf *payload)
@@ -101,13 +99,13 @@ make_frame(struct buf *buf, const struct buf *payload)
 }
 
 static void
-broadcast(const struct buf *buf)
+broadcast(const struct buf *frame)
 {
 	size_t i;
 	ssize_t sent;
 
 	for (i = 0; i < ws_count; i++) {
-		sent = send(wsclients[i].socket, buf->s, buf->len, 0);
+		sent = send(wsclients[i].socket, frame->s, frame->len, 0);
 		if (sent == -1)
 			warn("send to %d\n", wsclients[i].socket);
 		else
@@ -115,154 +113,182 @@ broadcast(const struct buf *buf)
 	}
 }
 
+struct calcpars
+{
+	int row, prev_row, prev_x, prev_y, dt;
+	uint64_t timestamp, count, prev_count, prev_time, start_time;
+	struct buf frame, payload;
+	char s[1024];
+};
+
+static void
+cpars_init(struct calcpars *p)
+{
+	memset(p, 0, sizeof(struct calcpars));
+	p->prev_row = -1;
+	buf_init(&p->frame);
+	buf_init(&p->payload);
+}
+
+static void
+cpars_read_history_record(struct calcpars *p, FILE *f)
+{
+	fgets(p->s, 1024, f);
+	int n = sscanf(p->s, "%llu\t%llu\n", &p->timestamp, &p->count);
+	if (n != 2)
+		errx(1, "wrong line: %s", p->s);
+}
+
+static void
+cpars_process_record(struct calcpars *p, int websocket)
+{
+	int x, y, dt;
+	uint64_t diff_x, diff_y;
+
+	if (p->prev_count == 0) {
+		p->prev_count = p->count;
+		p->start_time = p->timestamp;
+		p->prev_time = p->timestamp;
+		return;
+	}
+
+	dt = p->timestamp - p->prev_time;
+	if (dt <= 0)
+		return;
+
+	diff_x = (p->timestamp - p->start_time)*20;
+	diff_y = (p->count - p->prev_count);
+
+	x = diff_x % 1000;
+	p->row = diff_x / 1000;
+	y = p->row * 50 + diff_y / dt;
+
+	if (p->row != p->prev_row) {
+		buf_appendf(&p->payload, "c=gray\nl=0,%d,1000,%d\n", p->row*50, p->row*50);
+		p->prev_x = 0;
+		p->prev_y += 50;
+	}
+
+	buf_appendf(&p->payload, "c=darkgreen\nl=%d,%d,%d,%d", p->prev_x, p->prev_y, x, y);
+	make_frame(&p->frame, &p->payload);
+
+	if (websocket == -1)
+		broadcast(&p->frame);
+	else
+		send(websocket, p->frame.s, p->frame.len, 0);
+
+	p->frame.len = 0;
+	p->payload.len = 0;
+	p->prev_count = p->count;
+	p->prev_time = p->timestamp;
+	p->prev_row = p->row;
+	p->prev_x = x;
+	p->prev_y = y;
+}
+
+static void
+send_frame(const char *text, int websocket)
+{
+	struct buf frame;
+	struct buf payload;
+	ssize_t sent;
+
+	buf_init(&frame);
+	buf_init(&payload);
+
+	buf_appendf(&payload, text);
+	make_frame(&frame, &payload);
+	sent = send(websocket, frame.s, frame.len, 0);
+	if (sent == -1)
+		warn("send_frame");
+	buf_clean(&frame);
+	buf_clean(&payload);
+}
+
 static void
 send_history(int websocket)
 {
-	struct buf buf;
-	struct buf payload;
-	uint64_t timestamp, count, diff_x, diff_y;
-	char s[1024];
-	int n, x = 0, y = 0, row, prev_row = -1, prev_x = 0, prev_y = 0;
-	buf_init(&buf);
-	buf_init(&payload);
+	struct calcpars cpars;
 
-	uint64_t prev_count = 0;
-	uint64_t prev_time = 0;
+	cpars_init(&cpars);
 
 	FILE *f = fopen(events_fname, "rt");
 	if (f == NULL)
 		err(1, "events~.txt");
 
 	while (!feof(f)) {
-		fgets(s, 1024, f);
-		n = sscanf(s, "%llu\t%llu\n", &timestamp, &count);
-		if (n != 2)
-			errx(1, "wrong line: %s", s);
-
-		if (prev_count == 0) {
-			prev_count = count;
-			start_time = timestamp;
-			prev_time = timestamp;
-			continue;
-		}
-
-		int dt = timestamp - prev_time;
-		if (dt <= 0) {
-			continue;
-		}
-
-		diff_x = (timestamp - start_time)/2;
-		diff_y = (count - prev_count) / 10;
-
-		x = diff_x % 1000;
-		row = diff_x / 1000;
-		y = row * 50 + diff_y / dt;
-
-		if (row != prev_row) {
-			buf_appendf(&payload, "c=gray\nl=0,%d,1000,%d\n", row*50, row*50);
-			prev_x = 0;
-			prev_y += 50;
-		}
-
-		if (x - prev_x > 10) {
-			prev_x = x - 10;
-			prev_y = y - 10;
-		}
-
-		buf_appendf(&payload, "c=darkgreen\nl=%d,%d,%d,%d", prev_x, prev_y, x, y);
-		make_frame(&buf, &payload);
-		send(websocket, buf.s, buf.len, 0);
-		buf.len = 0;
-		payload.len = 0;
-		prev_count = count;
-		prev_time = timestamp;
-		prev_row = row;
-		prev_x = x;
-		prev_y = y;
+		cpars_read_history_record(&cpars, f);
+		cpars_process_record(&cpars, websocket);
 	}
 
-	buf_clean(&buf);
-	buf_clean(&payload);
-	buf_appendf(&payload, "c=red");
-	make_frame(&buf, &payload);
-	send(websocket, buf.s, buf.len, 0);
-	buf_clean(&buf);
-	buf_clean(&payload);
+	send_frame("c=red", websocket);
 }
 
-int last_prev_x = 0;
-int last_prev_y = 0;
-int last_prev_row = -1;
+static struct calcpars realtime_cpars;
 
 static void
-send_last(int len)
+cpars_read_realtime_record(struct calcpars *p, ssize_t len)
+{
+	ssize_t sz = read(fd, p->s, len);
+	if (sz == -1)
+		err(1, "cpars_read_realtime_record");
+
+	int n = sscanf(p->s, "%llu\t%llu\n", &p->timestamp, &p->count);
+	if (n != 2)
+		errx(1, "wrong line: %s", p->s);
+}
+
+static void
+send_last(ssize_t len)
+{
+	cpars_read_realtime_record(&realtime_cpars, len);
+	cpars_process_record(&realtime_cpars, -1);
+}
+
+static int
+upgrade_connection(struct httpreq *req, struct buf *resp)
+{
+	char *sec_websocket_accept = create_accept_key(req->sec_websocket_key);
+
+	buf_appendf(resp, "HTTP/1.1 101 Switching Protocols\r\n");
+	buf_appendf(resp, "Connection: Upgrade\r\n");
+	buf_appendf(resp, "Upgrade: websocket\r\n");
+	buf_appendf(resp, "Sec-WebSocket-Accept: %s\r\n\r\n", sec_websocket_accept);
+
+	free(sec_websocket_accept);
+	int websocket = req->fd;
+	req->ownership_taken = 1;
+
+	int set = 1;
+	setsockopt(websocket, SOL_SOCKET, SO_NOSIGPIPE, (void *)&set, sizeof(int));
+
+	send(websocket, resp->s, resp->len, 0);
+	printf("ws connected: %d\n", websocket);
+	wsclients[ws_count].socket = websocket;
+	ws_count++;
+
+	return websocket;
+}
+
+static void
+draw_corners(int websocket)
 {
 	struct buf buf;
 	struct buf payload;
-	uint64_t timestamp, count, diff_x, diff_y;
-	char s[1000000];
-	int n, x = 0, y = 0, row;
-	ssize_t sz;
-
-
-	sz = read(fd, s, len);
-	if (sz == -1)
-		err(1, "send_last.read");
-
-	n = sscanf(s, "%llu\t%llu\n", &timestamp, &count);
-	if (n != 2)
-		errx(1, "wrong line: %s", s);
-
-	diff_x = (timestamp - start_time)/2;
-	diff_y = (count - prev_count) / 10;
-	x = diff_x % 1000;
-	row = diff_x / 1000;
-
-
-	int dt = timestamp - prev_time;
-	if (dt <= 0) {
-		return;
-	}
-
-	y = row * 50 + diff_y / dt;
-
-	if (prev_count == 0) {
-		prev_count = count;
-		prev_time = timestamp;
-		last_prev_row = row;
-		last_prev_x = x;
-		last_prev_y = y;
-		return;
-	}
 
 	buf_init(&buf);
 	buf_init(&payload);
+	buf_appendf(&payload,
+		    "l=0,-5,0,5\n"
+		    "l=-5,0,5,0\n"
+		    "l=1000,-5,1000,5\n"
+		    "l=995,0,1005,0\n"
+		    "l=0,495,0,505\n"
+		    "l=-5,500,5,500\n"
+		    );
 
-	if (row != last_prev_row) {
-		buf_appendf(&payload, "c=gray\nl=0,%d,1000,%d\nc=red", row*50, row*50);
-		last_prev_x = 0;
-		last_prev_y += 50;
-	}
-
-	if (x - last_prev_x > 10) {
-		last_prev_x = x - 10;
-		last_prev_y = y - 10;
-	}
-
-	if (y - last_prev_y > 100) {
-		last_prev_y = y - 10;
-	}
-
-	buf_appendf(&payload, "c=red\nl=%d,%d,%d,%d", last_prev_x, last_prev_y, x, y);
 	make_frame(&buf, &payload);
-	broadcast(&buf);
-
-	prev_count = count;
-	prev_time = timestamp;
-	last_prev_row = row;
-	last_prev_x = x;
-	last_prev_y = y;
-
+	send(websocket, buf.s, buf.len, 0);
 	buf_clean(&buf);
 	buf_clean(&payload);
 }
@@ -270,9 +296,6 @@ send_last(int len)
 static void
 on_request(struct httpreq *req, struct buf *resp, void *data)
 {
-	struct buf buf;
-	struct buf payload;
-
 	if (req->connection_upgrade) {
 
 		if (ws_count >= MAX_WS_COUNT) {
@@ -280,40 +303,8 @@ on_request(struct httpreq *req, struct buf *resp, void *data)
 			return;
 		}
 
-		char *sec_websocket_accept = create_accept_key(req->sec_websocket_key);
-
-		buf_appendf(resp, "HTTP/1.1 101 Switching Protocols\r\n");
-		buf_appendf(resp, "Connection: Upgrade\r\n");
-		buf_appendf(resp, "Upgrade: websocket\r\n");
-		buf_appendf(resp, "Sec-WebSocket-Accept: %s\r\n\r\n", sec_websocket_accept);
-
-		free(sec_websocket_accept);
-		int websocket = req->fd;
-		req->ownership_taken = 1;
-
-		int set = 1;
-		setsockopt(websocket, SOL_SOCKET, SO_NOSIGPIPE, (void *)&set, sizeof(int));
-
-		send(websocket, resp->s, resp->len, 0);
-		printf("ws connected: %d\n", websocket);
-		wsclients[ws_count].socket = websocket;
-		ws_count++;
-
-		buf_init(&buf);
-		buf_init(&payload);
-		buf_appendf(&payload,
-			    "l=0,-5,0,5\n"
-			    "l=-5,0,5,0\n"
-			    "l=1000,-5,1000,5\n"
-			    "l=995,0,1005,0\n"
-			    "l=0,495,0,505\n"
-			    "l=-5,500,5,500\n"
-			    );
-
-		make_frame(&buf, &payload);
-		send(websocket, buf.s, buf.len, 0);
-		buf_clean(&buf);
-		buf_clean(&payload);
+		int websocket = upgrade_connection(req, resp);
+		draw_corners(websocket);
 		send_history(websocket);
 	}
 
@@ -330,7 +321,7 @@ int main()
 	int i, nev;
 	off_t off;
 	struct httpd server;
-	struct timespec tout = { 10, 0 };
+	struct timespec tout = { 2, 0 };
 	struct kevent chlist[2];
 	struct kevent evlist[2];
 
@@ -371,7 +362,6 @@ int main()
 			err(1, "kevent");
 
 		if (nev == 0) {
-
 			buf_clean(&payload);
 			buf_appendf(&payload, "p=%d,20", (count++)*4);
 			make_frame(&tick_frame, &payload);
