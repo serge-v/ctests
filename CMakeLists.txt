@@ -4,9 +4,13 @@ cmake_minimum_required(VERSION 3.2)
 
 find_library(curl_LIBRARY NAMES curl PATHS "/usr/local/lib")
 find_package(OpenSSL REQUIRED)
+find_package(LibXml2 REQUIRED)
 
+include(../../../w/common/macros.cmake)
 include_directories(${OPENSSL_INCLUDE_DIR})
-include_directories(common)
+include_directories(../../../w/)
+
+gen_version_c()
 
 add_executable(curltest	curltest.c)
 target_link_libraries(curltest ${curl_LIBRARY})
@@ -15,7 +19,7 @@ add_executable(rextest rextest.c)
 add_executable(defines defines.c)
 add_executable(cleanup-attr cleanup.c)
 
-add_subdirectory(common)
+add_subdirectory(../../../w/common "${CMAKE_BINARY_DIR}/common")
 
 add_executable(
 	svhttpd

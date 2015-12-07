@@ -3,7 +3,7 @@
 #include <curl/curl.h>
 #include <stdlib.h>
 
-#include "../common/net.h"
+#include "common/net.h"
 
 int main(int argc, char **argv)
 {
