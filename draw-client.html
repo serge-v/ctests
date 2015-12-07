@@ -1,0 +1,91 @@
+<html>
+<head>
+<title>websocket test</title>
+<script>
+
+var dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
+var info;
+var ws;
+
+function draw_dot(xy)
+{
+	var a = xy.split(',');
+	var f = dot.cloneNode();
+	f.setAttribute('cx', parseInt(a[0]));
+	f.setAttribute('cy', parseInt(a[1]));
+	p.appendChild(f);
+}
+
+function onload()
+{
+	dot.setAttribute('cx', 10);
+	dot.setAttribute('cy', 10);
+	dot.setAttribute('r', 2);
+	dot.setAttribute('stroke-width', '1');
+	dot.setAttribute('stroke', 'gray');
+	dot.setAttribute('fill', 'red');
+
+	info = document.getElementById('info');
+	ws = new WebSocket("ws://localhost:44127");
+
+	ws.onclose = function(e) {
+		info.innerText = 'Disconnected.';
+	}
+
+	ws.onmessage = function(e) {
+		cmd = e.data;
+		if (cmd == 'c')
+			p.innerHTML = '';
+		else
+			draw_dot(cmd);
+	}
+
+	ws.onopen = function() {
+		info.innerText = '';
+	}
+}
+
+var mousedown = 0;
+
+function svgmove(e)
+{
+	if (!mousedown)
+		return;
+
+	var svg = document.getElementById('p');
+	var t = (event.x-24) + ',' + (event.y-24);
+	info.innerText = t;
+	if (event.x < 20)
+		t = 'c';
+	ws.send(t);
+}
+
+function svgdown(e)
+{
+	mousedown = 1;
+}
+
+function svgup(e)
+{
+	mousedown = 0;
+}
+
+</script>
+</head>
+
+<body onload="onload()" style="cursor: default">
+<div style="width: 400px; height: 400px;">
+	<svg id="graph" viewBox="0 0 400 400" version="1.1"
+		xmlns="http://www.w3.org/2000/svg"
+		onmousemove="svgmove()"
+		onmouseup="svgup()"
+		onmousedown="svgdown()"
+		style="border: solid 1px green;">
+		<g transform="translate(20, 20)">
+			<g id="p"></g>
+		</g>
+	</svg>
+</div>
+<div id="info"></div>
+</body>
+</html>

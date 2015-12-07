@@ -33,5 +33,17 @@ target_link_libraries(
 	svc
 )
 
+add_executable(
+	draw-server
+	draw-server.c
+)
+
+target_link_libraries(
+	draw-server
+	${OPENSSL_SSL_LIBRARY} 
+	${OPENSSL_CRYPTO_LIBRARY} 
+	svc
+)
+
 add_executable(mailto mailto.c)
 target_link_libraries(mailto ${curl_LIBRARY} svc)
