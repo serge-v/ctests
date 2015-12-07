@@ -1,3 +1,7 @@
+/*
+ * Monitors event~.txt file and pushes graphical data to the websock clients. 
+ */
+
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -12,9 +16,9 @@
 #include <fcntl.h>
 #include <sys/uio.h>
 #include <unistd.h>
-#include "../common/http.h"
-#include "../common/crypt.h"
-#include "../common/socket.h"
+#include "common/http.h"
+#include "common/crypt.h"
+#include "common/socket.h"
 
 bool debug = false;
 
@@ -202,10 +206,12 @@ upgrade_connection(struct httpreq *req, struct buf *resp)
 {
 	char *sec_websocket_accept = create_accept_key(req->sec_websocket_key);
 
-	buf_appendf(resp, "HTTP/1.1 101 Switching Protocols\r\n");
-	buf_appendf(resp, "Connection: Upgrade\r\n");
-	buf_appendf(resp, "Upgrade: websocket\r\n");
-	buf_appendf(resp, "Sec-WebSocket-Accept: %s\r\n\r\n", sec_websocket_accept);
+	buf_appendf(resp,
+		"HTTP/1.1 101 Switching Protocols\r\n"
+		"Connection: Upgrade\r\n"
+		"Upgrade: websocket\r\n"
+		"Sec-WebSocket-Accept: %s\r\n\r\n",
+		sec_websocket_accept);
 
 	free(sec_websocket_accept);
 	int websocket = req->fd;
@@ -259,10 +265,11 @@ on_request(struct httpreq *req, struct buf *resp, void *data)
 		draw_corners(websocket);
 	}
 
-	buf_appendf(resp, "HTTP/1.1 200 OK\r\n");
-	buf_appendf(resp, "Content-Type: text/plain\r\n");
-	buf_appendf(resp, "Content-Length: 5\r\n\r\n");
-	buf_appendf(resp, "test\n");
+	buf_appendf(resp,
+		"HTTP/1.1 200 OK\r\n"
+		"Content-Type: text/plain\r\n"
+		"Content-Length: 5\r\n\r\n"
+		"test\n");
 }
 
 int main(int argc, char **argv)
