@@ -9,6 +9,7 @@ find_package(LibXml2 REQUIRED)
 include(../../../w/common/macros.cmake)
 include_directories(${OPENSSL_INCLUDE_DIR})
 include_directories(../../../w/)
+include_directories(${CMAKE_BINARY_DIR})
 
 gen_version_c()
 
@@ -33,9 +34,12 @@ target_link_libraries(
 	svc
 )
 
+generate_resources(drawpad.html GENERATED)
+
 add_executable(
 	draw-server
 	draw-server.c
+	drawpad.html.c
 )
 
 target_link_libraries(

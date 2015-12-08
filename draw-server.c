@@ -19,6 +19,7 @@
 #include "common/http.h"
 #include "common/crypt.h"
 #include "common/socket.h"
+#include "drawpad.html.h"
 
 bool debug = true;
 
@@ -102,10 +103,15 @@ close_client(int fd)
 	size_t i;
 
 	for (i = 0; i < ws_count; i++) {
-		if (wsclients[i].socket == fd) {
-			close(wsclients[i].socket);
-			wsclients[i].socket = 0;
-		}
+		if (wsclients[i].socket != fd)
+			continue;
+
+		close(wsclients[i].socket);
+		/* compact client list by moving last element into current element */
+		wsclients[i] = wsclients[ws_count-1];
+		wsclients[ws_count-1].socket = -1;
+		ws_count--;
+		break;
 	}
 }
 
@@ -145,13 +151,49 @@ on_request(struct httpreq *req, struct buf *resp, void *data)
 		}
 
 		upgrade_connection(req, resp);
+		return;
 	}
 
 	buf_appendf(resp,
 		"HTTP/1.1 200 OK\r\n"
-		"Content-Type: text/plain\r\n"
-		"Content-Length: 5\r\n\r\n"
-		"test\n");
+		"Content-Type: text/html\r\n"
+		"Content-Length: %zu\r\n\r\n"
+		"%s\n",
+		drawpad_html_size,
+		drawpad_html);
+}
+
+static struct buf history_ring[1000];
+static size_t history_idx = 0;
+static size_t history_size = 1000;
+
+static void
+history_init()
+{
+	for (int i = 0; i < history_size; i++) {
+		buf_init(&history_ring[i]);
+	}
+}
+
+static void
+history_add(const struct buf *frame)
+{
+	history_ring[history_idx].len = 0;
+	buf_append(&history_ring[history_idx], frame->s, frame->len);
+	history_idx++;
+	if (history_idx >= history_size)
+		history_idx = 0;
+}
+
+static void
+history_replay(int fd)
+{
+	for (int i = 0; i < history_size; i++) {
+		struct buf *frame = &history_ring[i];
+		if (frame->len > 0) {
+			send(fd, frame->s, frame->len, 0);
+		}
+	}
 }
 
 static struct buf frame;
@@ -194,6 +236,7 @@ process_client_mmove(int fd)
 	buf_append(&payload, data, len);
 	make_frame(&frame, &payload);
 	broadcast(&frame);
+	history_add(&frame);
 
 	frame.len = 0;
 	payload.len = 0;
@@ -216,6 +259,7 @@ int main(int argc, char **argv)
 
 	buf_init(&frame);
 	buf_init(&payload);
+	history_init();
 
 	if (httpd_start(&server, address, port) == -1)
 		errx(1, "cannot start server");
@@ -252,8 +296,11 @@ int main(int argc, char **argv)
 
 			if (evlist[i].ident == server.listen_socket) {
 				fd = httpd_accept(&server);
-				EV_SET(&chlist[changes_count], fd, EVFILT_READ, EV_ADD, 0, 0, 0);
-				changes_count++;
+				if (fd > 0) {
+					history_replay(fd);
+					EV_SET(&chlist[changes_count], fd, EVFILT_READ, EV_ADD, 0, 0, 0);
+					changes_count++;
+				}
 				continue;
 			}
 			
