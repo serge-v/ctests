@@ -19,9 +19,20 @@
 #include "common/http.h"
 #include "common/crypt.h"
 #include "common/socket.h"
+#include "common/regexp.h"
 #include "drawpad.html.h"
 
-bool debug = true;
+#define MAX_WS_COUNT 100
+
+struct wsclient
+{
+	int socket;
+};
+
+static int kq = -1;
+static struct wsclient wsclients[MAX_WS_COUNT];
+static int ws_count = 0;
+static struct buf page_buf;
 
 /*
  * accept_key = base64(sha1(sec_websocket_key + guid))
@@ -41,17 +52,6 @@ create_accept_key(const char *req_key)
 
 	return resp_key;
 }
-
-#define MAX_WS_COUNT 100
-
-struct wsclient
-{
-	int socket;
-};
-
-static int kq = -1;
-static struct wsclient wsclients[MAX_WS_COUNT];
-static int ws_count = 0;
 
 static void
 make_frame(struct buf *buf, const struct buf *payload)
@@ -119,6 +119,7 @@ static void
 upgrade_connection(struct httpreq *req, struct buf *resp)
 {
 	char *sec_websocket_accept = create_accept_key(req->sec_websocket_key);
+	fprintf(stderr, "sec_websocket_accept: [%s]\n", sec_websocket_accept);
 
 	buf_appendf(resp,
 		"HTTP/1.1 101 Switching Protocols\r\n"
@@ -134,7 +135,9 @@ upgrade_connection(struct httpreq *req, struct buf *resp)
 	int set = 1;
 	setsockopt(websocket, SOL_SOCKET, SO_NOSIGPIPE, (void *)&set, sizeof(int));
 
+	fprintf(stderr, "resp: [%s]\n", resp->s);
 	send(websocket, resp->s, resp->len, 0);
+	fprintf(stderr, "sent: %d, %d\n", websocket, resp->len);
 	printf("ws connected: %d\n", websocket);
 	wsclients[ws_count].socket = websocket;
 	ws_count++;
@@ -154,13 +157,18 @@ on_request(struct httpreq *req, struct buf *resp, void *data)
 		return;
 	}
 
+	buf_append(&page_buf, drawpad_html, drawpad_html_size);
+	buf_replace(&page_buf, "\\{wsurl\\}", req->host);
+
 	buf_appendf(resp,
 		"HTTP/1.1 200 OK\r\n"
 		"Content-Type: text/html\r\n"
 		"Content-Length: %zu\r\n\r\n"
 		"%s\n",
-		drawpad_html_size,
-		drawpad_html);
+		page_buf.len,
+		page_buf.s);
+
+	page_buf.len = 0;
 }
 
 static struct buf history_ring[1000];
@@ -199,12 +207,20 @@ history_replay(int fd)
 static struct buf frame;
 static struct buf payload;
 
-static const char *
-decode_frame_inplace(char *s, int *len)
+enum wsopcode {
+	WSFRAME_TEXT =  0x1,
+	WSFRAME_CLOSE = 0x8,
+	WSFRAME_PING =  0x9,
+	WSFRAME_PONG =  0xA
+};
+
+static enum wsopcode
+decode_frame_inplace(char *s, const char **text_start, int *text_len)
 {
 	char *mask, *data, *p;
 	int datalen, i;
 
+	enum wsopcode opcode = s[0] & 0x0F;
 	datalen = s[1] & 0x7F;
 	mask = &s[2];
 	data = &s[6];
@@ -213,8 +229,10 @@ decode_frame_inplace(char *s, int *len)
 		*p ^= mask[i % 4];
 	}
 
-	*len = datalen;
-	return data;
+	*text_start = data;
+	*text_len = datalen;
+
+	return opcode;
 }
 
 static void
@@ -223,6 +241,7 @@ process_client_mmove(int fd)
 	char buf[100];
 	const char *data;
 	int len;
+	enum wsopcode op;
 
 	ssize_t was_read = read(fd, buf, 100);
 
@@ -232,20 +251,25 @@ process_client_mmove(int fd)
 
 	buf[was_read] = 0;
 
-	data = decode_frame_inplace(buf, &len);
-	buf_append(&payload, data, len);
-	make_frame(&frame, &payload);
-	broadcast(&frame);
-	history_add(&frame);
+	op = decode_frame_inplace(buf, &data, &len);
 
-	frame.len = 0;
-	payload.len = 0;
+	if (op == WSFRAME_TEXT) {
+		buf_append(&payload, data, len);
+		make_frame(&frame, &payload);
+		broadcast(&frame);
+		history_add(&frame);
+		frame.len = 0;
+		payload.len = 0;
+	} else if (op == WSFRAME_CLOSE) {
+		close_client(fd);
+	}
 }
 
 static const char *address = "0.0.0.0";
 static struct kevent chlist[10];
 static struct kevent evlist[10];
-static struct timespec tout = { 30, 0 };
+static struct timespec tout = { 0, 100000000 };
+static int last_x = 0, last_y = 400;
 
 static struct httpd server = {
 	.handler = on_request
@@ -259,6 +283,7 @@ int main(int argc, char **argv)
 
 	buf_init(&frame);
 	buf_init(&payload);
+	buf_init(&page_buf);
 	history_init();
 
 	if (httpd_start(&server, address, port) == -1)
@@ -276,8 +301,33 @@ int main(int argc, char **argv)
 		if (events_count < 0)
 			err(1, "kevent");
 
-		if (events_count == 0)
+		if (events_count == 0) {
+			if (last_x > 400) {
+				last_x = 0;
+				buf_appendf(&payload, "p2=clear");
+				make_frame(&frame, &payload);
+				broadcast(&frame);
+				frame.len = 0;
+				payload.len = 0;
+			}
+
+			int y = 400 - rand() % 100;
+			int x = last_x + 1;
+			buf_appendf(&payload, "l=%d,%d,%d,%d", last_x, last_y, x, y);
+			last_y = y;
+			last_x = x;
+			make_frame(&frame, &payload);
+			broadcast(&frame);
+			frame.len = 0;
+			payload.len = 0;
+
+			buf_appendf(&payload, "t=10,300,%d", x);
+			make_frame(&frame, &payload);
+			broadcast(&frame);
+			frame.len = 0;
+			payload.len = 0;
 			continue;
+		}
 
 		changes_count = 0;
 
