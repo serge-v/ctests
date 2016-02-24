@@ -13,6 +13,7 @@ python -m SimpleHTTPServer
 #include <assert.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <err.h>
 #include <curl/curl.h>
 
 static int verbose = 0;
@@ -78,6 +79,28 @@ test_fetch(const char *url)
 	}
 }
 
+static void
+fetch_url(const char *url, const char *fname)
+{
+	FILE *f = fopen(fname, "wb");
+	if (f == NULL)
+		err(1, "cannot open out file %s", fname);
+
+	CURL *curl = curl_easy_init();
+	if (curl == NULL)
+		errx(1, "cannot init curl");
+
+	char errbuf[CURL_ERROR_SIZE];
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, f);
+	curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
+	curl_easy_setopt(curl, CURLOPT_URL, url);
+
+ 	CURLcode err = curl_easy_perform(curl);
+	if (err != CURLE_OK)
+		errx(1, "curl error: %s", errbuf);
+}
+
+
 int
 main()
 {
@@ -87,12 +110,16 @@ main()
 	}
 
 	curl_global_init(CURL_GLOBAL_ALL);
+	
+	fetch_url("http://weather.noaa.gov/pub/data/raw/fz/fznt01.kwbc.hsf.at1.txt", "/tmp/forecast.txt");
 
-	test_fetch("http://localhost:8000/curltest.c");
-	test_fetch("http://localhost:8000/notfound.txt");
-	test_fetch("http://localhost:8001/badport.txt");
-	test_fetch("http://badaddress:8001/badaddress.txt");
-	test_fetch("badprot://badaddress/badaddress.txt");
+	if (0) {
+		test_fetch("http://localhost:8000/curltest.c");
+		test_fetch("http://localhost:8000/notfound.txt");
+		test_fetch("http://localhost:8001/badport.txt");
+		test_fetch("http://badaddress:8001/badaddress.txt");
+		test_fetch("badprot://badaddress/badaddress.txt");
+	}
 
 	curl_global_cleanup();
 
