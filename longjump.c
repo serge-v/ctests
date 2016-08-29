@@ -11,14 +11,14 @@ static void catch_segv()
 
 int main()
 {
-	int *p = NULL;
+	int *p = 0x12345;
 
 	signal(SIGSEGV, catch_segv);
 
 	if (setjmp(jbuf) == 0) {
 		printf("%d\n", *p);
 	} else {
-		printf("Ouch! I crashed!\n");
+		printf("Ouch! I crashed!. p = %p\n", p);
 	}
 
 	printf("exiting.\n");

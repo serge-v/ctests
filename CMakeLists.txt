@@ -1,6 +1,5 @@
 cmake_minimum_required(VERSION 3.2)
-
-#include_directories("/usr/local/include")
+project(ctests C)
 
 find_library(curl_LIBRARY NAMES curl PATHS "/usr/local/lib")
 find_package(OpenSSL REQUIRED)
@@ -51,3 +50,10 @@ target_link_libraries(
 
 add_executable(mailto mailto.c)
 target_link_libraries(mailto ${curl_LIBRARY} svc)
+
+add_executable(ncurses-hello ncurses-hello.c)
+target_link_libraries(ncurses-hello ncurses)
+
+add_executable(fork-exec fork-exec.c)
+add_executable(tag-exec tag-exec.c)
+add_executable(load-mlist load-mlist.c)

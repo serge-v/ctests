@@ -137,7 +137,7 @@ upgrade_connection(struct httpreq *req, struct buf *resp)
 
 	fprintf(stderr, "resp: [%s]\n", resp->s);
 	send(websocket, resp->s, resp->len, 0);
-	fprintf(stderr, "sent: %d, %d\n", websocket, resp->len);
+	fprintf(stderr, "sent: %d, %zu\n", websocket, resp->len);
 	printf("ws connected: %d\n", websocket);
 	wsclients[ws_count].socket = websocket;
 	ws_count++;
